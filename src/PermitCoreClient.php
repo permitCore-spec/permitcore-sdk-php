@@ -41,7 +41,7 @@ class PermitCoreClient
     public function validate(string $licenseKey): LicenseResult
     {
         try {
-            $data   = $this->get('api/v1/validate/' . rawurlencode($licenseKey));
+            $data   = $this->post('api/v1/validate', ['licenseKey' => $licenseKey]);
             $result = LicenseResult::fromArray($data);
             if ($result->isValid) {
                 $this->saveCache($licenseKey, $result);
@@ -69,12 +69,14 @@ class PermitCoreClient
         ?string $deviceId   = null,
         ?string $deviceName = null
     ): LicenseResult {
-        $hwid    = $deviceId ?? $this->getHardwareId();
-        $payload = ['licenseKey' => $licenseKey, 'deviceId' => $hwid];
-        if ($deviceName !== null) {
-            $payload['deviceName'] = $deviceName;
-        }
+        $hwid = $deviceId ?? $this->getHardwareId();
         try {
+            // [S-Nonce] Fetch a single-use nonce first (replay-attack protection)
+            $nonceData = $this->get('api/v1/nonce');
+            $payload   = ['licenseKey' => $licenseKey, 'deviceId' => $hwid, 'nonce' => $nonceData['nonce']];
+            if ($deviceName !== null) {
+                $payload['deviceName'] = $deviceName;
+            }
             $data   = $this->post('api/v1/activate', $payload);
             $result = LicenseResult::fromArray($data);
             if ($result->isValid) {
