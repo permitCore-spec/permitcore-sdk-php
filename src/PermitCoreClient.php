@@ -84,7 +84,14 @@ class PermitCoreClient
             }
             return $result;
         } catch (\Throwable) {
-            return new LicenseResult(isValid: false, message: 'Cannot reach license server.');
+            // [S-Continuity] If this device already activated successfully before (e.g. an app
+            // that re-runs activate() on every launch, or a reinstall that kept the cache file),
+            // fall back to that cached result instead of failing outright.
+            $cached = $this->loadCache($licenseKey);
+            if ($cached !== null) {
+                return $cached;
+            }
+            return new LicenseResult(isValid: false, message: 'Cannot reach license server.', isOffline: true);
         }
     }
 
