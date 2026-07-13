@@ -2,7 +2,7 @@
 
 Official PHP client for [PermitCore](https://permitcore.net) license management.
 
-**Requirements:** PHP 8.0+, `ext-curl`, `ext-json`
+**Requirements:** PHP 8.0+, `ext-curl`, `ext-json`, `ext-openssl` (present on effectively every standard PHP installation — needed for offline license token verification)
 
 ---
 
@@ -123,6 +123,51 @@ $client->heartbeat($token);
 // Release the seat when done
 $client->checkin($token);
 ```
+
+---
+
+## Offline license tokens
+
+An offline activation token (`pc_offline_v1.<payload>.<signature>`) lets your app verify a
+license with **zero network calls**, using ECDSA P-256 signature verification against your
+tenant's public key (`GET /api/v1/{tenantSlug}/public-key`). Useful for air-gapped or
+intermittently-connected deployments.
+
+```php
+// Pure local verification — no network call. Never throws.
+$result = $client->verifyOfflineToken($token, $publicKeyBase64);
+
+if ($result['isValid']) {
+    echo 'Valid! Product: ' . $result['productName'] . PHP_EOL;
+    echo 'Expires: ' . $result['expiresAt'] . PHP_EOL;
+} else {
+    echo 'Invalid: ' . $result['message'] . PHP_EOL;
+}
+```
+
+```php
+// Verify + bind to this device + persist locally (call once, e.g. at install time)
+$result = $client->activateOffline($token, $publicKeyBase64, $deviceId);
+
+// On every later launch — no token needed, reads the local cache, still no network call
+$result = $client->validateOffline($deviceId);
+```
+
+```php
+// Optional: ask the server to verify the token AND check its revocation status (requires network)
+$result = $client->verifyOfflineOnline($token);
+```
+
+All four methods return an array shaped `['isValid' => bool, 'message' => string, ...]` — on
+a valid token, the payload fields (`tokenId`, `tenantSlug`, `tenantId`, `licenseId`,
+`licenseKeyHash`, `deviceId`, `deviceName`, `productName`, `maxActivations`, `issuedAt`,
+`expiresAt`) are merged in alongside `isValid`/`message`. `verifyOfflineToken()` and
+`validateOffline()` never throw — malformed, tampered, expired, or missing input all come
+back as `isValid = false` with a descriptive `message`.
+
+`activateOffline()`'s local cache is stored in `sys_get_temp_dir()` as
+`.permitcore_offline_<hash>` (same convention as the `validate()`/`activate()` cache, keyed
+by device ID instead of license key).
 
 ---
 
