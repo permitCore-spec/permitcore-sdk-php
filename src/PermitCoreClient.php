@@ -146,19 +146,25 @@ class PermitCoreClient
 
     /**
      * Keeps a floating session alive. Call every 4–5 minutes.
+     *
+     * [S-Float] Session token in the POST body — never the URL path — matches
+     * FloatingController.Heartbeat's FloatingTokenRequest exactly.
      */
     public function heartbeat(string $sessionToken): FloatingSession
     {
-        $data = $this->post("api/v1/float/heartbeat/{$sessionToken}", []);
+        $data = $this->post('api/v1/float/heartbeat', ['sessionToken' => $sessionToken]);
         return FloatingSession::fromArray($data);
     }
 
     /**
      * Releases a floating seat back to the pool.
+     *
+     * [S-Float] Session token in the POST body — never the URL path — matches
+     * FloatingController.Checkin's FloatingTokenRequest exactly (also: it's a POST, not DELETE).
      */
     public function checkin(string $sessionToken): void
     {
-        $this->request('DELETE', "api/v1/float/checkin/{$sessionToken}", null);
+        $this->post('api/v1/float/checkin', ['sessionToken' => $sessionToken]);
     }
 
     // ── Offline token verification (pc_offline_v1, ECDSA P-256 / IEEE P1363) ──────────────
