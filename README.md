@@ -1,6 +1,6 @@
 # PermitCore PHP SDK
 
-Official PHP client for [PermitCore](https://permitcore.net) license management.
+Official PHP client for [PermitCore](https://permitcore.dev) license management.
 
 **Requirements:** PHP 8.0+, `ext-curl`, `ext-json`, `ext-openssl` (present on effectively every standard PHP installation — needed for offline license token verification)
 
