@@ -405,21 +405,53 @@ class PermitCoreClient
         return hash('sha256', implode('|', array_filter($components)));
     }
 
-    // ── Offline cache ─────────────────────────────────────────────────────────
+    // ── Offline cache (pc_grace_v1, ECDSA-signed) ───────────────────────────────
+    //
+    // [S-Grace1] The server used to hand us a raw, unsigned JSON blob to cache — anyone with
+    // filesystem access could hand-edit it and grant themselves permanent "valid" access. Now
+    // the server signs the cacheable payload (pc_grace_v1 token, same ECDSA P-256/SHA-256/
+    // IEEE-P1363 convention as the pc_offline_v1 tokens verified above) and we cache THAT,
+    // verifying it locally (no network) on every offline read. A hand-edited cache file now
+    // fails ECDSA verification instead of silently working.
 
     private function saveCache(string $licenseKey, LicenseResult $result): void
     {
-        if (!$this->enableOfflineCache || $result->offlineGraceDays === null) {
+        // The server only issues offlineCacheToken when a grace period is configured, so a
+        // null/missing token here already means "nothing to cache," same as the old
+        // offlineGraceDays check used to mean.
+        if (!$this->enableOfflineCache || empty($result->offlineCacheToken)) {
             return;
         }
         try {
-            $entry = [
-                'result'      => $result->toArray(),
-                'valid_until' => time() + $result->offlineGraceDays * 86400,
-            ];
-            file_put_contents($this->cachePath($licenseKey), json_encode($entry), LOCK_EX);
+            // Safe to read before verifying — only used to pick which tenant's public-key
+            // endpoint to fetch. The verifyGraceCacheToken() call below is what actually
+            // establishes trust before anything gets persisted to disk.
+            $tenantSlug = $this->extractUnverifiedTenantSlug($result->offlineCacheToken);
+            if ($tenantSlug === null) {
+                return;
+            }
+
+            $pubKeyData = $this->get('api/v1/' . rawurlencode($tenantSlug) . '/public-key');
+            $publicKey  = $pubKeyData['publicKey'] ?? null;
+            if (!is_string($publicKey) || $publicKey === '') {
+                return;
+            }
+
+            // Verify before persisting anything — never cache a token this SDK can't itself
+            // verify later; that would just recreate the old "trust an opaque file" problem.
+            $check = $this->verifyGraceCacheToken($result->offlineCacheToken, $publicKey);
+            if (!($check['isValid'] ?? false)) {
+                return;
+            }
+
+            $entry = ['token' => $result->offlineCacheToken, 'publicKey' => $publicKey];
+            file_put_contents(
+                $this->cachePath($licenseKey),
+                json_encode($entry, JSON_THROW_ON_ERROR),
+                LOCK_EX
+            );
         } catch (\Throwable) {
-            // best-effort — ignore write errors
+            // cache failure must never block the normal online flow
         }
     }
 
@@ -434,13 +466,37 @@ class PermitCoreClient
         }
         try {
             $entry = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-            if (($entry['valid_until'] ?? 0) < time()) {
+            if (!is_array($entry) || !isset($entry['token'], $entry['publicKey'])) {
                 return null;
             }
-            $result            = LicenseResult::fromArray($entry['result']);
-            $result->isOffline = true;
-            $result->message   = 'Offline mode — cached result';
-            return $result;
+
+            // No network call here — verification uses only the public key persisted alongside
+            // the token at save time. This is the entire point: a hand-edited cache file (or one
+            // copied to another machine) fails ECDSA verification instead of silently working.
+            $check = $this->verifyGraceCacheToken((string) $entry['token'], (string) $entry['publicKey']);
+            if (!($check['isValid'] ?? false) || !isset($check['payload']) || !is_array($check['payload'])) {
+                return null;
+            }
+
+            $p = $check['payload'];
+
+            $validUntilDisplay = (string) ($p['validUntil'] ?? '');
+            try {
+                $dt = new \DateTime($validUntilDisplay, new \DateTimeZone('UTC'));
+                $validUntilDisplay = $dt->format('d M Y');
+            } catch (\Throwable) {
+                // fall back to the raw ISO string if unparsable — display only, never fatal
+            }
+
+            return new LicenseResult(
+                isValid:              (bool)  ($p['isValid'] ?? false),
+                productName:                   $p['productName'] ?? null,
+                remainingActivations: isset($p['remainingActivations']) ? (int) $p['remainingActivations'] : null,
+                expiresAt:                     $p['expiresAt'] ?? null,
+                message:              "Offline mode — valid until {$validUntilDisplay} (cryptographically verified)",
+                features:                      $p['features'] ?? null,
+                isOffline:            true,
+            );
         } catch (\Throwable) {
             return null;
         }
@@ -450,6 +506,92 @@ class PermitCoreClient
     {
         $hash = substr(hash('sha256', $licenseKey), 0, 16);
         return sys_get_temp_dir() . DIRECTORY_SEPARATOR . ".permitcore_cache_{$hash}";
+    }
+
+    // ── Grace-cache token verification (pc_grace_v1, ECDSA P-256 / IEEE P1363) ──────────
+
+    /**
+     * Verifies a pc_grace_v1 offline grace-cache token entirely locally — no network call.
+     * Mirrors verifyOfflineToken() above (same crypto primitives, same byte-handling — the
+     * signature covers the raw UTF-8 bytes of the base64url payload string, not the decoded
+     * JSON) but for the grace-cache payload shape and the "validUntil" expiry field instead
+     * of "expiresAt".
+     *
+     * Never throws — malformed/tampered/expired input all come back as isValid = false.
+     *
+     * @return array{isValid: bool, message: string, payload?: array} `payload` is present
+     *         whenever the token parsed far enough to decode a payload (even if expired or
+     *         otherwise invalid), matching verifyOfflineToken()'s array_merge behavior.
+     */
+    public function verifyGraceCacheToken(string $token, string $publicKeyBase64): array
+    {
+        try {
+            $parts = explode('.', $token);
+            if (count($parts) !== 3 || $parts[0] !== 'pc_grace_v1') {
+                return ['isValid' => false, 'message' => 'Malformed token.'];
+            }
+
+            $rawSig = $this->base64UrlDecode($parts[2]);
+            if ($rawSig === false || strlen($rawSig) !== 64) {
+                return ['isValid' => false, 'message' => 'Malformed token.'];
+            }
+
+            $publicKeyPem = $this->spkiToPem($publicKeyBase64);
+            $derSig       = $this->p1363ToDer($rawSig);
+
+            // $parts[1] is passed as-is — openssl_verify() needs the raw bytes that were
+            // signed, which are the ASCII bytes of the base64url payload STRING, not the
+            // decoded JSON. Same subtlety verifyOfflineToken() already handles.
+            $verified = openssl_verify($parts[1], $derSig, $publicKeyPem, OPENSSL_ALGO_SHA256);
+            if ($verified !== 1) {
+                return ['isValid' => false, 'message' => 'Invalid signature.'];
+            }
+
+            $json = $this->base64UrlDecode($parts[1]);
+            if ($json === false) {
+                return ['isValid' => false, 'message' => 'Malformed payload.'];
+            }
+
+            $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($payload)) {
+                return ['isValid' => false, 'message' => 'Malformed payload.'];
+            }
+
+            $validUntil = new \DateTime((string) ($payload['validUntil'] ?? ''), new \DateTimeZone('UTC'));
+            $now        = new \DateTime('now', new \DateTimeZone('UTC'));
+            if ($validUntil < $now) {
+                return ['isValid' => false, 'message' => 'Grace period expired.', 'payload' => $payload];
+            }
+
+            return ['isValid' => true, 'message' => 'Valid.', 'payload' => $payload];
+        } catch (\Throwable) {
+            return ['isValid' => false, 'message' => 'Invalid or corrupt token.'];
+        }
+    }
+
+    // Reads only the `tenantSlug` field out of the token's payload, WITHOUT verifying the
+    // signature — safe to do because it's only used to pick which tenant's public-key endpoint
+    // to fetch. The subsequent verifyGraceCacheToken() call is what actually establishes trust
+    // before anything gets persisted to disk.
+    private function extractUnverifiedTenantSlug(string $token): ?string
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 3 || $parts[0] !== 'pc_grace_v1') {
+            return null;
+        }
+        try {
+            $json = $this->base64UrlDecode($parts[1]);
+            if ($json === false) {
+                return null;
+            }
+            $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($payload) || !isset($payload['tenantSlug']) || !is_string($payload['tenantSlug'])) {
+                return null;
+            }
+            return $payload['tenantSlug'];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function getOrCreateSeed(): string
@@ -539,6 +681,11 @@ class LicenseResult
         public bool    $isOffline           = false,
         public ?string $minVersion          = null,
         public ?string $maxVersion          = null,
+        // [S-Grace1] ECDSA-signed pc_grace_v1 token (non-null only when the license has an
+        // offline grace period and this call succeeded). The SDK caches THIS — not the rest of
+        // this response — and verifies it locally before trusting a cached result on a later
+        // offline call. See PermitCoreClient::verifyGraceCacheToken().
+        public ?string $offlineCacheToken   = null,
     ) {}
 
     /** Returns true if the license includes the given feature flag (case-insensitive). */
@@ -574,6 +721,7 @@ class LicenseResult
             isOffline:            (bool)  ($data['isOffline']            ?? false),
             minVersion:                    $data['minVersion']            ?? null,
             maxVersion:                    $data['maxVersion']            ?? null,
+            offlineCacheToken:             $data['offlineCacheToken']     ?? null,
         );
     }
 
@@ -595,6 +743,7 @@ class LicenseResult
             'isOffline'           => $this->isOffline,
             'minVersion'          => $this->minVersion,
             'maxVersion'          => $this->maxVersion,
+            'offlineCacheToken'   => $this->offlineCacheToken,
         ];
     }
 }
