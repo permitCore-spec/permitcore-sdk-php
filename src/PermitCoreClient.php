@@ -39,10 +39,14 @@ class PermitCoreClient
      * Validates a license key. Does NOT consume an activation slot.
      * Falls back to local cache when the server is unreachable.
      */
-    public function validate(string $licenseKey): LicenseResult
+    public function validate(string $licenseKey, ?string $version = null): LicenseResult
     {
         try {
-            $data   = $this->post('api/v1/validate', ['licenseKey' => $licenseKey]);
+            $payload = ['licenseKey' => $licenseKey];
+            if ($version !== null) {
+                $payload['version'] = $version;
+            }
+            $data   = $this->post('api/v1/validate', $payload);
             $result = LicenseResult::fromArray($data);
             if ($result->isValid) {
                 $this->saveCache($licenseKey, $result);
@@ -64,11 +68,13 @@ class PermitCoreClient
      *
      * @param string|null $deviceId   Custom hardware ID — auto-generated HWID used when null.
      * @param string|null $deviceName Human-readable device label shown in the admin panel.
+     * @param string|null $version    Client app version, included in the request when set.
      */
     public function activate(
         string  $licenseKey,
         ?string $deviceId   = null,
-        ?string $deviceName = null
+        ?string $deviceName = null,
+        ?string $version    = null
     ): LicenseResult {
         $hwid = $deviceId ?? $this->getHardwareId();
         try {
@@ -77,6 +83,9 @@ class PermitCoreClient
             $payload   = ['licenseKey' => $licenseKey, 'deviceId' => $hwid, 'nonce' => $nonceData['nonce']];
             if ($deviceName !== null) {
                 $payload['deviceName'] = $deviceName;
+            }
+            if ($version !== null) {
+                $payload['version'] = $version;
             }
             $data   = $this->post('api/v1/activate', $payload);
             $result = LicenseResult::fromArray($data);

@@ -15,5 +15,13 @@
             "PermitCore\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "PermitCore\\Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
     "minimum-stability": "stable"
 }
