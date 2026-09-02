@@ -651,7 +651,12 @@ class PermitCoreClient
         $raw    = curl_exec($ch);
         $errno  = curl_errno($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        // [QA-019] curl_close() is a deprecated no-op as of PHP 8.5 — curl handles have been
+        // reference-counted CurlHandle objects (not resources needing manual closing) since PHP
+        // 8.0, and calling this here emitted a real deprecation notice on PHP 8.5 that corrupted
+        // every response: the notice's own output ran before this method's caller could send
+        // headers, producing "headers already sent" warnings and turning a clean 403/CSV response
+        // into HTML-prefixed garbage. $ch is released automatically when it goes out of scope.
 
         if ($errno !== CURLE_OK || $raw === false) {
             throw new \RuntimeException("cURL error {$errno}");
