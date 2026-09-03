@@ -700,6 +700,10 @@ class LicenseResult
         // this response — and verifies it locally before trusting a cached result on a later
         // offline call. See PermitCoreClient::verifyGraceCacheToken().
         public ?string $offlineCacheToken   = null,
+        // [QA-040 fix] Stable, machine-readable failure reason (e.g. "NotFound",
+        // "SeatsExhausted", "Expired") — null on success. $message stays free-text for display;
+        // use this for programmatic branching instead, since message wording may change.
+        public ?string $errorCode           = null,
     ) {}
 
     /** Returns true if the license includes the given feature flag (case-insensitive). */
@@ -736,6 +740,7 @@ class LicenseResult
             minVersion:                    $data['minVersion']            ?? null,
             maxVersion:                    $data['maxVersion']            ?? null,
             offlineCacheToken:             $data['offlineCacheToken']     ?? null,
+            errorCode:                     $data['errorCode']             ?? null,
         );
     }
 
@@ -758,6 +763,7 @@ class LicenseResult
             'minVersion'          => $this->minVersion,
             'maxVersion'          => $this->maxVersion,
             'offlineCacheToken'   => $this->offlineCacheToken,
+            'errorCode'           => $this->errorCode,
         ];
     }
 }
