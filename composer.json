@@ -1,9 +1,17 @@
 {
     "name": "permitcore/sdk",
-    "description": "Official PHP client for PermitCore license management",
+    "description": "Official PHP client for PermitCore license management. Validate, activate, and deactivate license keys with built-in hardware fingerprinting and offline grace period caching.",
     "type": "library",
     "license": "MIT",
-    "version": "1.0.1",
+    "keywords": ["license", "licensing", "sdk", "permitcore", "activation"],
+    "homepage": "https://permitcore.dev",
+    "authors": [
+        { "name": "PermitCore", "email": "sdk@permitcore.dev" }
+    ],
+    "support": {
+        "source": "https://github.com/permitCore-spec/permitcore-sdk-php",
+        "docs": "https://permitcore.dev/docs/sdks/php"
+    },
     "require": {
         "php": ">=8.0",
         "ext-curl": "*",
