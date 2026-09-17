@@ -63,6 +63,7 @@ $result = $client->validate($licenseKey);
 // vendorWarning            ?string
 // message                  ?string
 // isOffline                bool     (true when served from local cache)
+// productId                ?string  (the license's real product GUID; see "Product scoping" below)
 ```
 
 Validate never consumes an activation slot. It falls back to the local disk cache when the server is unreachable, as long as the license has `offlineGraceDays` configured.
@@ -84,6 +85,30 @@ if (!$result->isValid) {
 ```
 
 Call `activate()` **once** per installation. Use `validate()` on every subsequent launch.
+
+---
+
+## Product scoping (added 1.1.0)
+
+`validate()`/`activate()` find a key purely by the key itself — by default, any active key
+belonging to your tenant validates successfully, regardless of which of your products it was
+actually issued for. If your app should only accept keys issued for *this* product, either check
+`$result->productId` yourself, or pass `expectedProductId` and let the server reject a mismatch
+for you (`$result->errorCode === 'WrongProduct'`). Find your product's ID in the Admin panel
+under Products (or on a license's own detail page).
+
+```php
+$result = $client->validate($licenseKey, expectedProductId: 'your-product-guid-here');
+
+if ($result->errorCode === 'WrongProduct') {
+    die('This key was not issued for this product.');
+}
+```
+
+`expectedProductId` is entirely optional on both `validate()` and `activate()` — omit it and
+nothing changes from prior versions. `$result->productId` is populated on every successful
+lookup regardless of whether `expectedProductId` was passed, so existing callers can start
+checking it themselves without touching the request side at all.
 
 ---
 
@@ -236,5 +261,7 @@ $client = new PermitCoreClient(
 | `vendorWarning` | `?string` | Non-fatal message from the vendor |
 | `message` | `?string` | Reason when `isValid = false` |
 | `isOffline` | `bool` | True when result came from local cache |
+| `errorCode` | `?string` | Stable, machine-readable failure reason (e.g. `"WrongProduct"`), null on success |
+| `productId` | `?string` | The license's real product GUID — always present when the key was found, regardless of whether `expectedProductId` was passed |
 
 `hasFeature(string $feature): bool` — case-insensitive feature check.

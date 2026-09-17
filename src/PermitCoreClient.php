@@ -38,13 +38,21 @@ class PermitCoreClient
     /**
      * Validates a license key. Does NOT consume an activation slot.
      * Falls back to local cache when the server is unreachable.
+     *
+     * @param string|null $expectedProductId Optional — when set, the server rejects
+     *     (`LicenseResult::$errorCode === 'WrongProduct'`) unless this key belongs to that exact
+     *     product; without it, any active key for the caller's tenant validates successfully
+     *     regardless of which product it was issued for.
      */
-    public function validate(string $licenseKey, ?string $version = null): LicenseResult
+    public function validate(string $licenseKey, ?string $version = null, ?string $expectedProductId = null): LicenseResult
     {
         try {
             $payload = ['licenseKey' => $licenseKey];
             if ($version !== null) {
                 $payload['version'] = $version;
+            }
+            if ($expectedProductId !== null) {
+                $payload['expectedProductId'] = $expectedProductId;
             }
             $data   = $this->post('api/v1/validate', $payload);
             $result = LicenseResult::fromArray($data);
@@ -66,15 +74,17 @@ class PermitCoreClient
     /**
      * Validates AND activates the key on this device. Call only once per installation.
      *
-     * @param string|null $deviceId   Custom hardware ID — auto-generated HWID used when null.
-     * @param string|null $deviceName Human-readable device label shown in the admin panel.
-     * @param string|null $version    Client app version, included in the request when set.
+     * @param string|null $deviceId          Custom hardware ID — auto-generated HWID used when null.
+     * @param string|null $deviceName        Human-readable device label shown in the admin panel.
+     * @param string|null $version           Client app version, included in the request when set.
+     * @param string|null $expectedProductId Optional, same meaning as validate()'s.
      */
     public function activate(
         string  $licenseKey,
-        ?string $deviceId   = null,
-        ?string $deviceName = null,
-        ?string $version    = null
+        ?string $deviceId          = null,
+        ?string $deviceName        = null,
+        ?string $version           = null,
+        ?string $expectedProductId = null
     ): LicenseResult {
         $hwid = $deviceId ?? $this->getHardwareId();
         try {
@@ -86,6 +96,9 @@ class PermitCoreClient
             }
             if ($version !== null) {
                 $payload['version'] = $version;
+            }
+            if ($expectedProductId !== null) {
+                $payload['expectedProductId'] = $expectedProductId;
             }
             $data   = $this->post('api/v1/activate', $payload);
             $result = LicenseResult::fromArray($data);
@@ -704,6 +717,13 @@ class LicenseResult
         // "SeatsExhausted", "Expired") — null on success. $message stays free-text for display;
         // use this for programmatic branching instead, since message wording may change.
         public ?string $errorCode           = null,
+        /**
+         * The product this license actually belongs to. Always present when a license was
+         * found, regardless of whether you passed expectedProductId — null only when the key
+         * itself wasn't found. Compare this yourself, or pass expectedProductId, to confirm a
+         * valid key belongs to the specific product you expect.
+         */
+        public ?string $productId           = null,
     ) {}
 
     /** Returns true if the license includes the given feature flag (case-insensitive). */
@@ -741,6 +761,7 @@ class LicenseResult
             maxVersion:                    $data['maxVersion']            ?? null,
             offlineCacheToken:             $data['offlineCacheToken']     ?? null,
             errorCode:                     $data['errorCode']             ?? null,
+            productId:                     $data['productId']             ?? null,
         );
     }
 
@@ -764,6 +785,7 @@ class LicenseResult
             'maxVersion'          => $this->maxVersion,
             'offlineCacheToken'   => $this->offlineCacheToken,
             'errorCode'           => $this->errorCode,
+            'productId'           => $this->productId,
         ];
     }
 }
