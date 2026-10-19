@@ -19,6 +19,7 @@ namespace PermitCore;
  */
 class PermitCoreClient
 {
+    public const VERSION = '1.2.0';
     private string $baseUrl;
     private int    $timeout;
     private bool   $enableOfflineCache;
@@ -724,6 +725,8 @@ class LicenseResult
          * valid key belongs to the specific product you expect.
          */
         public ?string $productId           = null,
+        public ?string $paymentStatus       = null,
+        public bool $isInGracePeriod         = false,
     ) {}
 
     /** Returns true if the license includes the given feature flag (case-insensitive). */
@@ -751,6 +754,8 @@ class LicenseResult
             message:                       $data['message']               ?? null,
             customFields:                  $data['customFields']          ?? null,
             vendorWarning:                 $data['vendorWarning']         ?? null,
+            paymentStatus:                 $data['paymentStatus']         ?? null,
+            isInGracePeriod:               $data['isInGracePeriod']       ?? false,
             features:                      $data['features']              ?? null,
             isTrial:              (bool)  ($data['isTrial']              ?? false),
             trialDaysRemaining:   isset($data['trialDaysRemaining']) ? (int) $data['trialDaysRemaining'] : null,
@@ -775,6 +780,8 @@ class LicenseResult
             'message'             => $this->message,
             'customFields'        => $this->customFields,
             'vendorWarning'       => $this->vendorWarning,
+            'paymentStatus'       => $this->paymentStatus,
+            'isInGracePeriod'     => $this->isInGracePeriod,
             'features'            => $this->features,
             'isTrial'             => $this->isTrial,
             'trialDaysRemaining'  => $this->trialDaysRemaining,

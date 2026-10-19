@@ -265,3 +265,17 @@ $client = new PermitCoreClient(
 | `productId` | `?string` | The license's real product GUID — always present when the key was found, regardless of whether `expectedProductId` was passed |
 
 `hasFeature(string $feature): bool` — case-insensitive feature check.
+
+## Store subscription payment status (1.2.0)
+
+Online validate/activate results include `paymentStatus` (`active`, `past_due`, `unpaid`,
+`canceled`, or null/empty for other licenses) and `isInGracePeriod`. Use the language's normal
+field naming (`PaymentStatus`/`IsInGracePeriod`, `payment_status`/`is_in_grace_period`, or
+camelCase). Show a card-update notice for `past_due` or `unpaid` while `isValid` is true.
+Paid renewals extend the same key to Stripe's paid billing-period end. Default payment grace is
+14 days from paid-through, configurable in Store settings and overridable per license.
+Access expires at the grace deadline; an ended subscription revokes the license.
+
+Signed offline cache tokens are capped at paid-through plus grace and refreshed on successful
+online validation after payment. An offline cached result cannot discover a payment-state change;
+reconnect for current payment metadata. The signed deadline remains authoritative offline.
