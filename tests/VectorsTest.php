@@ -23,7 +23,8 @@ final class VectorsTest extends TestCase
     private static function vectors(): array
     {
         if (self::$vectors === null) {
-            $path = __DIR__ . '/../../test-vectors/vectors.json';
+            $path = __DIR__ . '/../test-vectors/vectors.json';
+            if (!is_file($path)) $path = __DIR__ . '/../../test-vectors/vectors.json';
             $json = file_get_contents($path);
             self::assertNotFalse($json, "Could not read vectors.json at {$path}");
             self::$vectors = json_decode((string) $json, true, 512, JSON_THROW_ON_ERROR);

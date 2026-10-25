@@ -1,12 +1,21 @@
 {
     "name": "permitcore/sdk",
-    "description": "Official PHP client for PermitCore license management. Validate, activate, and deactivate license keys with built-in hardware fingerprinting and offline grace period caching.",
+    "description": "Official PHP client for PermitCore license management. Validate and activate license keys with built-in hardware fingerprinting and offline grace period caching.",
     "type": "library",
     "license": "MIT",
-    "keywords": ["license", "licensing", "sdk", "permitcore", "activation"],
+    "keywords": [
+        "license",
+        "licensing",
+        "sdk",
+        "permitcore",
+        "activation"
+    ],
     "homepage": "https://permitcore.dev",
     "authors": [
-        { "name": "PermitCore", "email": "sdk@permitcore.dev" }
+        {
+            "name": "PermitCore",
+            "email": "sdk@permitcore.dev"
+        }
     ],
     "support": {
         "source": "https://github.com/permitCore-spec/permitcore-sdk-php",
@@ -19,6 +28,9 @@
         "ext-openssl": "*"
     },
     "autoload": {
+        "classmap": [
+            "src/PermitCoreClient.php"
+        ],
         "psr-4": {
             "PermitCore\\": "src/"
         }
@@ -31,5 +43,13 @@
     "require-dev": {
         "phpunit/phpunit": "^9.6"
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "config": {
+        "platform": {
+            "php": "8.0.30"
+        }
+    },
+    "extra": {
+        "permitcore-sdk-version": "2.1.1"
+    }
 }

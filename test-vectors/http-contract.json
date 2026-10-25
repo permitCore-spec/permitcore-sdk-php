@@ -1,0 +1,1745 @@
+{
+  "schemaVersion": 1,
+  "status": "implementation contract; not registry acceptance",
+  "defaults": {
+    "timeoutMilliseconds": 10000,
+    "maxRetries": 2,
+    "retryDelaysMilliseconds": [
+      250,
+      500
+    ]
+  },
+  "retryableOperations": [
+    "validate",
+    "publicKey",
+    "nonce",
+    "heartbeat"
+  ],
+  "singleAttemptOperations": [
+    "checkout",
+    "activate",
+    "meter",
+    "deactivate",
+    "checkin"
+  ],
+  "httpAuthority": [
+    {
+      "status": 400,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 401,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 403,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 404,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 409,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 429,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"Rejected\"}",
+      "errorCode": "NotFound"
+    },
+    {
+      "status": 403,
+      "body": "{\"isValid\":true}",
+      "errorCode": "HttpError"
+    },
+    {
+      "status": 403,
+      "body": "Forbidden",
+      "errorCode": "HttpError"
+    },
+    {
+      "status": 429,
+      "body": "<html>Rate limited</html>",
+      "errorCode": "HttpError"
+    },
+    {
+      "status": 404,
+      "body": "",
+      "errorCode": "HttpError"
+    },
+    {
+      "status": 403,
+      "body": "{\"isValid\":true}",
+      "errorCode": "HttpError",
+      "truncatedBody": true
+    }
+  ],
+  "httpLicenseResponses": [
+    {
+      "status": 200,
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\",\"remainingActivations\":3}",
+      "errorCode": "",
+      "expectedValid": true
+    },
+    {
+      "status": 200,
+      "body": "{\"isValid\":false,\"errorCode\":\"NotFound\",\"message\":\"License not found\"}",
+      "errorCode": "NotFound",
+      "expectedValid": false
+    }
+  ],
+  "httpTransientResponses": [
+    {
+      "status": 500,
+      "body": "{\"isValid\":true}",
+      "errorCode": "RequestFailed",
+      "expectedValid": false,
+      "expectedOffline": true
+    },
+    {
+      "status": 503,
+      "body": "Unavailable",
+      "errorCode": "RequestFailed",
+      "expectedValid": false,
+      "expectedOffline": true
+    }
+  ],
+  "floating": {
+    "checkout": {
+      "method": "POST",
+      "path": "/api/v1/float/checkout",
+      "body": {
+        "licenseKey": "QA-FLOAT-KEY",
+        "deviceId": "qa-device",
+        "deviceName": "QA desktop"
+      }
+    },
+    "heartbeat": {
+      "method": "POST",
+      "path": "/api/v1/float/heartbeat",
+      "body": {
+        "sessionToken": "qa-floating-token"
+      }
+    },
+    "checkin": {
+      "method": "POST",
+      "path": "/api/v1/float/checkin",
+      "body": {
+        "sessionToken": "qa-floating-token"
+      }
+    },
+    "success": {
+      "success": true,
+      "sessionToken": "qa-floating-token",
+      "expiresAt": "2035-01-01T12:00:00Z",
+      "message": null
+    },
+    "denied": {
+      "success": false,
+      "sessionToken": null,
+      "expiresAt": null,
+      "message": "No seats available."
+    }
+  },
+  "deactivate": {
+    "method": "POST",
+    "path": "/api/v1/portal/nexova/deactivate",
+    "body": {
+      "licenseKey": "QA-DEACTIVATE-KEY",
+      "activationId": "11111111-2222-4333-8444-555555555555"
+    }
+  },
+  "meter": {
+    "method": "POST",
+    "path": "/api/v1/meter",
+    "body": {
+      "licenseKey": "QA-METER-KEY",
+      "eventName": "export",
+      "quantity": 2,
+      "meta": {
+        "format": "pdf",
+        "nested": {
+          "unicode": "život"
+        },
+        "preview": false
+      }
+    }
+  },
+  "licenseErrors": [
+    "NotFound",
+    "WrongProduct",
+    "Expired",
+    "Revoked",
+    "FutureServerCode"
+  ],
+  "transportErrors": [
+    "NetworkError",
+    "HttpError",
+    "InvalidResponse"
+  ],
+  "floatingCases": [
+    {
+      "name": "checkout-success",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{\"success\":true,\"sessionToken\":\"qa-floating-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"message\":null}",
+      "expectedSuccess": true,
+      "expectedErrorCode": ""
+    },
+    {
+      "name": "checkout-denied",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{\"success\":false,\"sessionToken\":null,\"expiresAt\":null,\"message\":\"No seats available.\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "FloatingDenied"
+    },
+    {
+      "name": "checkout-403-truthy",
+      "operation": "checkout",
+      "status": 403,
+      "body": "{\"success\":true,\"sessionToken\":\"qa-floating-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"message\":null}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-503",
+      "operation": "checkout",
+      "status": 503,
+      "body": "Unavailable",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-malformed",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-null",
+      "operation": "checkout",
+      "status": 200,
+      "body": "null",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-missing-success",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-invalid-boolean",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{\"success\":\"true\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkout-missing-token",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{\"success\":true,\"expiresAt\":\"2035-01-01T12:00:00Z\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-success",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{\"success\":true,\"sessionToken\":\"qa-floating-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"message\":null}",
+      "expectedSuccess": true,
+      "expectedErrorCode": ""
+    },
+    {
+      "name": "heartbeat-denied",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{\"success\":false,\"sessionToken\":null,\"expiresAt\":null,\"message\":\"No seats available.\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "FloatingDenied"
+    },
+    {
+      "name": "heartbeat-403-truthy",
+      "operation": "heartbeat",
+      "status": 403,
+      "body": "{\"success\":true,\"sessionToken\":\"qa-floating-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"message\":null}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-503",
+      "operation": "heartbeat",
+      "status": 503,
+      "body": "Unavailable",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-malformed",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-null",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "null",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-missing-success",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-invalid-boolean",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{\"success\":\"true\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "heartbeat-missing-token",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{\"success\":true,\"expiresAt\":\"2035-01-01T12:00:00Z\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed"
+    },
+    {
+      "name": "checkin-204",
+      "operation": "checkin",
+      "status": 204,
+      "body": "",
+      "expectedReleased": true
+    },
+    {
+      "name": "checkin-200",
+      "operation": "checkin",
+      "status": 200,
+      "body": "",
+      "expectedReleased": false
+    },
+    {
+      "name": "checkin-403",
+      "operation": "checkin",
+      "status": 403,
+      "body": "",
+      "expectedReleased": false
+    },
+    {
+      "name": "checkin-503",
+      "operation": "checkin",
+      "status": 503,
+      "body": "",
+      "expectedReleased": false
+    },
+    {
+      "name": "checkout-future-denial-code",
+      "operation": "checkout",
+      "status": 200,
+      "body": "{\"success\":false,\"sessionToken\":\"must-not-leak\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"errorCode\":\"FutureFloatCode\",\"message\":\"Denied\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "FutureFloatCode"
+    },
+    {
+      "name": "heartbeat-future-denial-code",
+      "operation": "heartbeat",
+      "status": 200,
+      "body": "{\"success\":false,\"sessionToken\":\"must-not-leak\",\"expiresAt\":\"2035-01-01T12:00:00Z\",\"errorCode\":\"FutureFloatCode\",\"message\":\"Denied\"}",
+      "expectedSuccess": false,
+      "expectedErrorCode": "FutureFloatCode"
+    }
+  ],
+  "floatingErrorCodes": [
+    "RequestFailed",
+    "FloatingDenied"
+  ],
+  "operations": {
+    "checkout": {
+      "method": "POST",
+      "path": "/api/v1/float/checkout",
+      "body": {
+        "licenseKey": "QA-FLOAT-KEY",
+        "deviceId": "qa-device",
+        "deviceName": "QA desktop"
+      }
+    },
+    "heartbeat": {
+      "method": "POST",
+      "path": "/api/v1/float/heartbeat",
+      "body": {
+        "sessionToken": "qa-floating-token"
+      }
+    },
+    "checkin": {
+      "method": "POST",
+      "path": "/api/v1/float/checkin",
+      "body": {
+        "sessionToken": "qa-floating-token"
+      }
+    },
+    "success": {
+      "success": true,
+      "sessionToken": "qa-floating-token",
+      "expiresAt": "2035-01-01T12:00:00Z",
+      "message": null
+    },
+    "denied": {
+      "success": false,
+      "sessionToken": null,
+      "expiresAt": null,
+      "message": "No seats available."
+    },
+    "deactivate": {
+      "path": "/api/v1/portal/qa-tenant/deactivate",
+      "body": {
+        "licenseKey": "QA-DEVICE-KEY",
+        "activationId": "11111111-2222-3333-4444-555555555555"
+      }
+    },
+    "meter": {
+      "path": "/api/v1/meter",
+      "body": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    }
+  },
+  "operationCases": [
+    {
+      "name": "deactivate-204",
+      "operation": "deactivate",
+      "status": 204,
+      "body": "",
+      "expectedReleased": true
+    },
+    {
+      "name": "deactivate-200",
+      "operation": "deactivate",
+      "status": 200,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "deactivate-400",
+      "operation": "deactivate",
+      "status": 400,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "deactivate-403",
+      "operation": "deactivate",
+      "status": 403,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "deactivate-404",
+      "operation": "deactivate",
+      "status": 404,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "deactivate-429",
+      "operation": "deactivate",
+      "status": 429,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "deactivate-503",
+      "operation": "deactivate",
+      "status": 503,
+      "body": "{\"success\":true}",
+      "expectedReleased": false
+    },
+    {
+      "name": "meter-recorded",
+      "operation": "meter",
+      "status": 200,
+      "body": "{\"recorded\":true}",
+      "expectedReleased": true,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-denied",
+      "operation": "meter",
+      "status": 200,
+      "body": "{\"recorded\":false}",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-missing",
+      "operation": "meter",
+      "status": 200,
+      "body": "{}",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-coerced",
+      "operation": "meter",
+      "status": 200,
+      "body": "{\"recorded\":\"true\"}",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-malformed",
+      "operation": "meter",
+      "status": 200,
+      "body": "{",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-null",
+      "operation": "meter",
+      "status": 200,
+      "body": "null",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-array",
+      "operation": "meter",
+      "status": 200,
+      "body": "[]",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-no-content",
+      "operation": "meter",
+      "status": 204,
+      "body": "",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-rejected",
+      "operation": "meter",
+      "status": 403,
+      "body": "{\"recorded\":true}",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-unavailable",
+      "operation": "meter",
+      "status": 503,
+      "body": "{\"recorded\":true}",
+      "expectedReleased": false,
+      "quantity": 3,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-quantity-zero",
+      "operation": "meter",
+      "status": 200,
+      "body": "{\"recorded\":true}",
+      "expectedReleased": true,
+      "quantity": 0,
+      "meta": {
+        "source": "qa",
+        "nested": {
+          "ok": true,
+          "labels": [
+            "one",
+            "two"
+          ],
+          "value": null
+        }
+      },
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 1,
+        "meta": {
+          "source": "qa",
+          "nested": {
+            "ok": true,
+            "labels": [
+              "one",
+              "two"
+            ],
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "meter-empty-meta",
+      "operation": "meter",
+      "status": 200,
+      "body": "{\"recorded\":true}",
+      "expectedReleased": true,
+      "quantity": 3,
+      "meta": {},
+      "request": {
+        "licenseKey": "QA-METER-KEY",
+        "eventName": "qa_export",
+        "quantity": 3,
+        "meta": {}
+      }
+    }
+  ],
+  "sdkClientSurfaces": {
+    "dotnet": [
+      {
+        "source": "PermitCore.Client/src/PermitCoreClient.cs",
+        "owner": "PermitCoreClient"
+      }
+    ],
+    "unity": [
+      {
+        "source": "Runtime/PermitCoreClient.cs",
+        "owner": "PermitCoreClient"
+      }
+    ],
+    "node": [
+      {
+        "source": "src/index.ts",
+        "owner": "PermitCoreClient"
+      }
+    ],
+    "python": [
+      {
+        "source": "permitcore/__init__.py",
+        "owner": "PermitCoreClient"
+      }
+    ],
+    "java": [
+      {
+        "source": "src/main/java/dev/permitcore/PermitClient.java",
+        "owner": "PermitClient"
+      }
+    ],
+    "cpp": [
+      {
+        "source": "include/permitcore/permit_client.hpp",
+        "owner": "PermitClient"
+      }
+    ],
+    "php": [
+      {
+        "source": "src/PermitCoreClient.php",
+        "owner": "PermitCoreClient"
+      }
+    ],
+    "go": [
+      {
+        "source": "client.go",
+        "owner": "Client"
+      },
+      {
+        "source": "client.go",
+        "owner": "package"
+      },
+      {
+        "source": "offline.go",
+        "owner": "package"
+      },
+      {
+        "source": "offline.go",
+        "owner": "Client"
+      },
+      {
+        "source": "hwid.go",
+        "owner": "package"
+      }
+    ]
+  },
+  "publicOperations": {
+    "validate": {
+      "dotnet": {
+        "member": "ValidateAsync"
+      },
+      "unity": {
+        "member": "ValidateAsync"
+      },
+      "node": {
+        "member": "validate"
+      },
+      "python": {
+        "member": "validate"
+      },
+      "java": {
+        "member": "validate"
+      },
+      "cpp": {
+        "member": "validate"
+      },
+      "php": {
+        "member": "validate"
+      },
+      "go": {
+        "member": "Validate"
+      }
+    },
+    "activate": {
+      "dotnet": {
+        "member": "ActivateAsync"
+      },
+      "unity": {
+        "member": "ActivateAsync"
+      },
+      "node": {
+        "member": "activate"
+      },
+      "python": {
+        "member": "activate"
+      },
+      "java": {
+        "member": "activate"
+      },
+      "cpp": {
+        "member": "activate"
+      },
+      "php": {
+        "member": "activate"
+      },
+      "go": {
+        "member": "Activate"
+      }
+    },
+    "deactivate": {
+      "dotnet": {
+        "member": "DeactivateAsync"
+      },
+      "unity": {
+        "member": "DeactivateAsync"
+      },
+      "node": {
+        "member": "deactivate"
+      },
+      "python": {
+        "member": "deactivate"
+      },
+      "java": {
+        "member": "deactivate"
+      },
+      "cpp": {
+        "member": "deactivate"
+      },
+      "php": {
+        "member": "deactivate"
+      },
+      "go": {
+        "member": "Deactivate"
+      }
+    },
+    "meter": {
+      "dotnet": {
+        "member": "MeterAsync"
+      },
+      "unity": {
+        "member": "MeterAsync"
+      },
+      "node": {
+        "member": "meter"
+      },
+      "python": {
+        "member": "meter"
+      },
+      "java": {
+        "member": "tryMeter"
+      },
+      "cpp": {
+        "member": "try_meter"
+      },
+      "php": {
+        "member": "meter"
+      },
+      "go": {
+        "member": "Meter"
+      }
+    },
+    "checkout": {
+      "dotnet": {
+        "member": "CheckoutAsync"
+      },
+      "unity": {
+        "member": "CheckoutAsync"
+      },
+      "node": {
+        "member": "checkout"
+      },
+      "python": {
+        "member": "checkout"
+      },
+      "java": {
+        "member": "checkout"
+      },
+      "cpp": {
+        "member": "checkout"
+      },
+      "php": {
+        "member": "checkout"
+      },
+      "go": {
+        "member": "Checkout"
+      }
+    },
+    "heartbeat": {
+      "dotnet": {
+        "member": "HeartbeatAsync"
+      },
+      "unity": {
+        "member": "HeartbeatAsync"
+      },
+      "node": {
+        "member": "heartbeat"
+      },
+      "python": {
+        "member": "heartbeat"
+      },
+      "java": {
+        "member": "heartbeat"
+      },
+      "cpp": {
+        "member": "heartbeat"
+      },
+      "php": {
+        "member": "heartbeat"
+      },
+      "go": {
+        "member": "Heartbeat"
+      }
+    },
+    "checkin": {
+      "dotnet": {
+        "member": "CheckinAsync"
+      },
+      "unity": {
+        "member": "CheckinAsync"
+      },
+      "node": {
+        "member": "checkin"
+      },
+      "python": {
+        "member": "checkin"
+      },
+      "java": {
+        "member": "checkin"
+      },
+      "cpp": {
+        "member": "checkin"
+      },
+      "php": {
+        "member": "checkin"
+      },
+      "go": {
+        "member": "Checkin"
+      }
+    },
+    "confirmedCheckin": {
+      "dotnet": {
+        "member": "TryCheckinAsync"
+      },
+      "unity": {
+        "member": "TryCheckinAsync"
+      },
+      "node": {
+        "member": "tryCheckin"
+      },
+      "python": {
+        "member": "try_checkin"
+      },
+      "java": {
+        "member": "tryCheckin"
+      },
+      "cpp": {
+        "member": "try_checkin"
+      },
+      "php": {
+        "member": "tryCheckin"
+      },
+      "go": {
+        "member": "TryCheckin"
+      }
+    },
+    "hardwareId": {
+      "dotnet": {
+        "member": "GetHardwareId"
+      },
+      "unity": {
+        "member": "GetHardwareId"
+      },
+      "node": {
+        "member": "getHardwareId"
+      },
+      "python": {
+        "member": "get_hardware_id"
+      },
+      "java": {
+        "member": "getHardwareId"
+      },
+      "cpp": {
+        "member": "get_hardware_id"
+      },
+      "php": {
+        "member": "getHardwareId"
+      },
+      "go": {
+        "member": "GetHardwareID"
+      }
+    },
+    "verifyOfflineToken": {
+      "dotnet": {
+        "member": "VerifyOfflineToken"
+      },
+      "unity": {
+        "member": "VerifyOfflineToken"
+      },
+      "node": {
+        "member": "verifyOfflineToken"
+      },
+      "python": {
+        "member": "verify_offline_token"
+      },
+      "java": {
+        "member": "verifyOfflineToken"
+      },
+      "cpp": {
+        "member": "verify_offline_token"
+      },
+      "php": {
+        "member": "verifyOfflineToken"
+      },
+      "go": {
+        "member": "VerifyOfflineToken"
+      }
+    },
+    "activateOffline": {
+      "dotnet": {
+        "member": "ActivateOffline"
+      },
+      "unity": {
+        "member": "ActivateOffline"
+      },
+      "node": {
+        "member": "activateOffline"
+      },
+      "python": {
+        "member": "activate_offline"
+      },
+      "java": {
+        "member": "activateOffline"
+      },
+      "cpp": {
+        "member": "activate_offline"
+      },
+      "php": {
+        "member": "activateOffline"
+      },
+      "go": {
+        "member": "ActivateOffline"
+      }
+    },
+    "validateOffline": {
+      "dotnet": {
+        "member": "ValidateOffline"
+      },
+      "unity": {
+        "member": "ValidateOffline"
+      },
+      "node": {
+        "member": "validateOffline"
+      },
+      "python": {
+        "member": "validate_offline"
+      },
+      "java": {
+        "member": "validateOffline"
+      },
+      "cpp": {
+        "member": "validate_offline"
+      },
+      "php": {
+        "member": "validateOffline"
+      },
+      "go": {
+        "member": "ValidateOffline"
+      }
+    },
+    "verifyOfflineOnline": {
+      "dotnet": {
+        "member": "VerifyOfflineOnlineAsync"
+      },
+      "unity": {
+        "member": "VerifyOfflineOnlineAsync"
+      },
+      "node": {
+        "member": "verifyOfflineOnline"
+      },
+      "python": {
+        "member": "verify_offline_online"
+      },
+      "java": {
+        "member": "verifyOfflineOnline"
+      },
+      "cpp": {
+        "member": "verify_offline_online"
+      },
+      "php": {
+        "member": "verifyOfflineOnline"
+      },
+      "go": {
+        "member": "VerifyOfflineOnline"
+      }
+    },
+    "verifyGraceCacheToken": {
+      "dotnet": {
+        "member": "VerifyGraceCacheToken"
+      },
+      "unity": {
+        "member": "VerifyGraceCacheToken"
+      },
+      "node": {
+        "member": "verifyGraceCacheToken"
+      },
+      "python": {
+        "member": "verify_grace_cache_token"
+      },
+      "java": {
+        "member": "verifyGraceCacheToken"
+      },
+      "cpp": {
+        "member": "verify_grace_cache_token"
+      },
+      "php": {
+        "member": "verifyGraceCacheToken"
+      },
+      "go": {
+        "member": "VerifyGraceCacheToken"
+      }
+    },
+    "hasFeature": {
+      "dotnet": {
+        "owner": "LicenseResult",
+        "member": "HasFeature",
+        "source": "PermitCore.Client/src/PermitCoreClient.cs"
+      },
+      "unity": {
+        "owner": "LicenseResult",
+        "member": "HasFeature",
+        "source": "Runtime/Models.cs"
+      },
+      "python": {
+        "owner": "LicenseResult",
+        "member": "has_feature",
+        "source": "permitcore/__init__.py"
+      },
+      "java": {
+        "owner": "ValidateResult",
+        "member": "hasFeature",
+        "source": "src/main/java/dev/permitcore/PermitClient.java"
+      },
+      "cpp": {
+        "owner": "ValidateResult",
+        "member": "has_feature",
+        "source": "include/permitcore/permit_client.hpp"
+      },
+      "php": {
+        "owner": "LicenseResult",
+        "member": "hasFeature",
+        "source": "src/PermitCoreClient.php"
+      },
+      "go": {
+        "owner": "LicenseResult",
+        "member": "HasFeature",
+        "source": "types.go"
+      },
+      "node": {
+        "member": "hasFeature"
+      }
+    }
+  },
+  "sdkCompatibilityHelpers": {
+    "dotnet": {
+      "Dispose": "Owns an HttpClient resource; lifecycle method rather than licensing operation."
+    },
+    "unity": {},
+    "node": {},
+    "python": {},
+    "java": {
+      "meter": "Existing detailed MeterResult overloads retained; canonical boolean reporting is tryMeter."
+    },
+    "cpp": {
+      "meter": "Existing detailed MeterResult signature retained; canonical boolean reporting is try_meter.",
+      "build_validate_body": "Previously published pure request-builder seam retained for compatibility.",
+      "build_activate_body": "Previously published pure request-builder seam retained for compatibility.",
+      "parse_validate": "Previously published pure response-parser seam retained for compatibility."
+    },
+    "php": {},
+    "go": {
+      "New": "Package constructor; configures the client rather than performing a licensing operation."
+    }
+  },
+  "featureCases": [
+    {
+      "name": "none",
+      "features": null,
+      "feature": "export",
+      "expected": false
+    },
+    {
+      "name": "empty",
+      "features": [],
+      "feature": "export",
+      "expected": false
+    },
+    {
+      "name": "present",
+      "features": [
+        "pro",
+        "export"
+      ],
+      "feature": "export",
+      "expected": true
+    },
+    {
+      "name": "upper-stored",
+      "features": [
+        "EXPORT"
+      ],
+      "feature": "export",
+      "expected": true
+    },
+    {
+      "name": "upper-request",
+      "features": [
+        "export"
+      ],
+      "feature": "EXPORT",
+      "expected": true
+    },
+    {
+      "name": "missing",
+      "features": [
+        "pro"
+      ],
+      "feature": "export",
+      "expected": false
+    },
+    {
+      "name": "empty-id",
+      "features": [
+        ""
+      ],
+      "feature": "",
+      "expected": true
+    }
+  ],
+  "transportCases": [
+    {
+      "name": "validate-recovers",
+      "operation": "validate",
+      "statuses": [
+        503,
+        503,
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 3,
+      "expectedSuccess": true,
+      "expectedErrorCode": "",
+      "expectedOffline": false
+    },
+    {
+      "name": "validate-exhausted",
+      "operation": "validate",
+      "statuses": [
+        503
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 3,
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed",
+      "expectedOffline": true
+    },
+    {
+      "name": "validate-retries-disabled",
+      "operation": "validate",
+      "statuses": [
+        503,
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed",
+      "expectedOffline": true,
+      "maxRetries": 0
+    },
+    {
+      "name": "validate-one-retry",
+      "operation": "validate",
+      "statuses": [
+        503,
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 2,
+      "expectedSuccess": true,
+      "expectedErrorCode": "",
+      "expectedOffline": false,
+      "maxRetries": 1
+    },
+    {
+      "name": "validate-rejection",
+      "operation": "validate",
+      "statuses": [
+        403,
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "HttpError",
+      "expectedOffline": false
+    },
+    {
+      "name": "validate-redirect",
+      "operation": "validate",
+      "statuses": [
+        302
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "HttpError",
+      "expectedOffline": false,
+      "location": "/redirect-target"
+    },
+    {
+      "name": "validate-malformed",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "{",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-missing",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "{}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-null",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "null",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-array",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "[]",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-coerced",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "{\"isValid\":\"true\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-empty",
+      "operation": "validate",
+      "statuses": [
+        200
+      ],
+      "body": "",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "validate-no-content",
+      "operation": "validate",
+      "statuses": [
+        204
+      ],
+      "body": "",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "cacheAvailable": true
+    },
+    {
+      "name": "checkout-not-replayed",
+      "operation": "checkout",
+      "statuses": [
+        503,
+        503,
+        200
+      ],
+      "body": "{\"success\":true,\"sessionToken\":\"qa-transport-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed",
+      "expectedOffline": false
+    },
+    {
+      "name": "heartbeat-recovers",
+      "operation": "heartbeat",
+      "statuses": [
+        503,
+        503,
+        200
+      ],
+      "body": "{\"success\":true,\"sessionToken\":\"qa-transport-token\",\"expiresAt\":\"2035-01-01T12:00:00Z\"}",
+      "expectedRequests": 3,
+      "expectedSuccess": true,
+      "expectedErrorCode": "",
+      "expectedOffline": false
+    },
+    {
+      "name": "activate-not-replayed",
+      "operation": "activate",
+      "statuses": [
+        503,
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "RequestFailed",
+      "expectedOffline": true,
+      "expectedNonceRequests": 1
+    },
+    {
+      "name": "nonce-recovers",
+      "operation": "activate",
+      "statuses": [
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 1,
+      "expectedSuccess": true,
+      "expectedErrorCode": "",
+      "expectedOffline": false,
+      "nonceStatuses": [
+        503,
+        503,
+        200
+      ],
+      "expectedNonceRequests": 3
+    },
+    {
+      "name": "nonce-rejection",
+      "operation": "activate",
+      "statuses": [
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 0,
+      "expectedSuccess": false,
+      "expectedErrorCode": "HttpError",
+      "expectedOffline": false,
+      "nonceStatuses": [
+        403
+      ],
+      "expectedNonceRequests": 1
+    },
+    {
+      "name": "nonce-invalid",
+      "operation": "activate",
+      "statuses": [
+        200
+      ],
+      "body": "{\"isValid\":true,\"productName\":\"QA Product\"}",
+      "expectedRequests": 0,
+      "expectedSuccess": false,
+      "expectedErrorCode": "InvalidResponse",
+      "expectedOffline": false,
+      "nonceBody": "{}",
+      "expectedNonceRequests": 1,
+      "cacheAvailable": true
+    },
+    {
+      "name": "meter-not-replayed",
+      "operation": "meter",
+      "statuses": [
+        503,
+        200
+      ],
+      "body": "{\"recorded\":true}",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "",
+      "expectedOffline": false
+    },
+    {
+      "name": "deactivate-not-replayed",
+      "operation": "deactivate",
+      "statuses": [
+        503,
+        204
+      ],
+      "body": "",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "",
+      "expectedOffline": false
+    },
+    {
+      "name": "checkin-not-replayed",
+      "operation": "checkin",
+      "statuses": [
+        503,
+        204
+      ],
+      "body": "",
+      "expectedRequests": 1,
+      "expectedSuccess": false,
+      "expectedErrorCode": "",
+      "expectedOffline": false
+    }
+  ]
+}

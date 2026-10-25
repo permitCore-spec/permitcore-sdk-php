@@ -1,0 +1,28 @@
+{
+  "sdk": "php",
+  "version": "2.1.1",
+  "sourceCommit": "3b695c0f6bcb8421c5dd8f764b959153e9481a25",
+  "sha256": {
+    "LICENSE": "472c050cdd70ebad87871cb0ed5398dc783cc52d7d9e716faf932e01b8cbab74",
+    "README.md": "9298313be1af7f1d7be62691977bee4b9214a5f85031f7a4b8d24bafe591737a",
+    "composer.json": "0f58e51359286c741885d9b7ed70e6d4b7331cd912c2a0bb683b35e9043a0317",
+    "composer.lock": "3a5ec8c73ef45b4e03ecb504bd7d4da34cbc5e5c228ad016436950c62c2d4aff",
+    "phpunit.xml": "384c4b72136aea61e61131b2a4832890eca7d38c92d3f45718aeb7305dc8244e",
+    "src/PermitCoreClient.php": "af8e3a08f1d2052021cdefc0ce6acd2a9325aa6ed8ee21b9f1a3211b35fcd9ea",
+    "test-vectors/http-contract.json": "a05cd850ce9ea10f5d0e2b3940c269dda162edff89dd4469d726fbab608c9e1e",
+    "test-vectors/vectors.json": "6bbd8c58d682b6e7482fe6ee70d8fdc4f387a324159543b976084660d8f88447",
+    "tester.php": "24edc2c3c5470c0c3e0c99ea03f8cd8c96459ed15320342dcb87157a9ade77f0",
+    "tests/CacheTrustTest.php": "12488c2e13b4c42dffc7962d2fa14f6db5758bcb9c6fdfc9df6029b8776b2fb5",
+    "tests/ComposerAutoloadTest.php": "e9c9c3d05f1fafe449a56368dd56fc36634b4f3a3cebf865f08b72636b6c3fce",
+    "tests/FeatureHelperContractTest.php": "4af2f79ead47cd4f4962bf9a0949bf4b8351695f81f01a3bd47adf28b38750c5",
+    "tests/FloatingContractTest.php": "d0e804619c7bf94e9074f04b5ba4b550b7595c46eaee66d96d2c78a19b9bd1ff",
+    "tests/HttpAuthorityTest.php": "4a22c90299c27e8d54c4f951344cedfd860dff86d3f20e8322d6c94a02d312c8",
+    "tests/PaymentStatusTest.php": "4d620c7aa20afa82e063e3aab2071deae8741b5b13c6ec276c87a349ca73f2dc",
+    "tests/ProductScopingTest.php": "d3dfeef1e76841f9c1dae8966cf69fb6525c74165a4b74039210766b179505c6",
+    "tests/TransportContractTest.php": "6aba0f8bf0ff05462f8245695bca3308e6e455da7ab57181a50736146dbba6e4",
+    "tests/VectorsTest.php": "da83318c3193ca1d94c2a74aa51e65fd25f3f4e91c64e6d72c549da7d76d1a7a",
+    "tests/fixtures/http-authority-router.php": "bdc15be8eafa4ffc51f8b0ff1fa8bbc3dd1f1c9d05130f1d34a4f568abf3d3b6",
+    "tests/fixtures/mock-server-router.php": "600cc23a4ec2d66ba307ed79dee08d90374298a35a26e3307d4a64f7bce3b1c1",
+    "tests/fixtures/transport-router.php": "c4312d7fb71f57f2889b6fdbc70f9ebc8bc36563e6fb911ccd477e24177d0fea"
+  }
+}

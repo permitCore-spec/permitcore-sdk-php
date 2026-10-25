@@ -4,6 +4,17 @@ declare(strict_types=1);
 
 namespace PermitCore;
 
+/** @internal Authoritative HTTP response; never a reason to use offline success. */
+final class HttpRejection extends \RuntimeException
+{
+    public function __construct(public int $status, public string $body)
+    {
+        parent::__construct("HTTP {$status}.");
+    }
+}
+
+final class InvalidResponse extends \RuntimeException {}
+
 /**
  * PermitCore PHP SDK — Official client for PermitCore license management.
  *
@@ -19,19 +30,32 @@ namespace PermitCore;
  */
 class PermitCoreClient
 {
-    public const VERSION = '1.2.0';
+    public const VERSION = '2.1.1';
     private string $baseUrl;
     private int    $timeout;
+    private int $maxRetries;
     private bool   $enableOfflineCache;
+    private array $trustedPublicKeys;
+    private string $cacheDirectory;
+    private ?string $deviceId;
 
     public function __construct(
         string $baseUrl,
         bool   $enableOfflineCache = true,
-        int    $timeout = 5
+        int    $timeout = 10,
+        array $trustedPublicKeys = [],
+        ?string $cacheDirectory = null,
+        ?string $deviceId = null,
+        int $maxRetries = 2
     ) {
+        if ($timeout <= 0 || $maxRetries < 0 || $maxRetries > 5) throw new \InvalidArgumentException('Timeout must be positive; maxRetries must be between 0 and 5.');
+        $this->maxRetries = $maxRetries;
         $this->baseUrl            = rtrim($baseUrl, '/');
         $this->enableOfflineCache = $enableOfflineCache;
         $this->timeout            = $timeout;
+        $this->trustedPublicKeys = array_values($trustedPublicKeys);
+        $this->cacheDirectory = $cacheDirectory ?? sys_get_temp_dir();
+        $this->deviceId = $deviceId;
     }
 
     // ── Validate ──────────────────────────────────────────────────────────────
@@ -49,6 +73,7 @@ class PermitCoreClient
     {
         try {
             $payload = ['licenseKey' => $licenseKey];
+            if ($this->enableOfflineCache && $this->trustedPublicKeys) $payload['deviceId'] = $this->effectiveDeviceId();
             if ($version !== null) {
                 $payload['version'] = $version;
             }
@@ -56,17 +81,21 @@ class PermitCoreClient
                 $payload['expectedProductId'] = $expectedProductId;
             }
             $data   = $this->post('api/v1/validate', $payload);
-            $result = LicenseResult::fromArray($data);
+            $result = self::licenseResponse($data);
             if ($result->isValid) {
-                $this->saveCache($licenseKey, $result);
+                $this->saveCache($licenseKey, $result, $this->effectiveDeviceId(), $expectedProductId);
             }
             return $result;
+        } catch (InvalidResponse) {
+            return new LicenseResult(isValid: false, errorCode: 'InvalidResponse', message: 'Invalid server response.');
+        } catch (HttpRejection $error) {
+            return self::rejectedLicense($error);
         } catch (\Throwable) {
-            $cached = $this->loadCache($licenseKey);
+            $cached = $this->loadCache($licenseKey, $this->effectiveDeviceId(), $expectedProductId);
             if ($cached !== null) {
                 return $cached;
             }
-            return new LicenseResult(isValid: false, message: 'Cannot reach license server.', isOffline: true);
+            return new LicenseResult(isValid: false, message: 'Cannot reach license server.', isOffline: true, errorCode: 'RequestFailed');
         }
     }
 
@@ -87,10 +116,11 @@ class PermitCoreClient
         ?string $version           = null,
         ?string $expectedProductId = null
     ): LicenseResult {
-        $hwid = $deviceId ?? $this->getHardwareId();
+        $hwid = $this->effectiveDeviceId($deviceId);
         try {
             // [S-Nonce] Fetch a single-use nonce first (replay-attack protection)
             $nonceData = $this->get('api/v1/nonce');
+            if (!isset($nonceData['nonce']) || !is_string($nonceData['nonce']) || trim($nonceData['nonce']) === '') throw new InvalidResponse();
             $payload   = ['licenseKey' => $licenseKey, 'deviceId' => $hwid, 'nonce' => $nonceData['nonce']];
             if ($deviceName !== null) {
                 $payload['deviceName'] = $deviceName;
@@ -102,20 +132,24 @@ class PermitCoreClient
                 $payload['expectedProductId'] = $expectedProductId;
             }
             $data   = $this->post('api/v1/activate', $payload);
-            $result = LicenseResult::fromArray($data);
+            $result = self::licenseResponse($data);
             if ($result->isValid) {
-                $this->saveCache($licenseKey, $result);
+                $this->saveCache($licenseKey, $result, $hwid, $expectedProductId, true);
             }
             return $result;
+        } catch (InvalidResponse) {
+            return new LicenseResult(isValid: false, errorCode: 'InvalidResponse', message: 'Invalid server response.');
+        } catch (HttpRejection $error) {
+            return self::rejectedLicense($error);
         } catch (\Throwable) {
             // [S-Continuity] If this device already activated successfully before (e.g. an app
             // that re-runs activate() on every launch, or a reinstall that kept the cache file),
             // fall back to that cached result instead of failing outright.
-            $cached = $this->loadCache($licenseKey);
+            $cached = $this->loadCache($licenseKey, $hwid, $expectedProductId, true);
             if ($cached !== null) {
                 return $cached;
             }
-            return new LicenseResult(isValid: false, message: 'Cannot reach license server.', isOffline: true);
+            return new LicenseResult(isValid: false, message: 'Cannot reach license server.', isOffline: true, errorCode: 'RequestFailed');
         }
     }
 
@@ -136,13 +170,13 @@ class PermitCoreClient
         int    $quantity = 1,
         array  $meta     = []
     ): bool {
-        $payload = ['licenseKey' => $licenseKey, 'eventName' => $eventName, 'quantity' => $quantity];
-        if (!empty($meta)) {
-            $payload['meta'] = $meta;
+        $payload = ['licenseKey' => $licenseKey, 'eventName' => $eventName, 'quantity' => max(1, $quantity)];
+        if (func_num_args() >= 4) {
+            $payload['meta'] = (object) $meta;
         }
         try {
             $data = $this->post('api/v1/meter', $payload);
-            return (bool) ($data['recorded'] ?? false);
+            return ($data['recorded'] ?? null) === true;
         } catch (\Throwable) {
             return false;
         }
@@ -153,41 +187,52 @@ class PermitCoreClient
     /**
      * Checks out a concurrent seat for a floating license.
      */
-    public function checkout(
-        string  $licenseKey,
-        ?string $deviceId   = null,
-        ?string $deviceName = null
-    ): FloatingSession {
-        $hwid    = $deviceId ?? $this->getHardwareId();
-        $payload = ['licenseKey' => $licenseKey, 'deviceId' => $hwid];
-        if ($deviceName !== null) {
-            $payload['deviceName'] = $deviceName;
-        }
-        $data = $this->post('api/v1/float/checkout', $payload);
-        return FloatingSession::fromArray($data);
+    /** Confirm removal; OTP/account policy remains enforced by the portal. */
+    public function deactivate(string $tenantSlug, string $licenseKey, string $activationId): bool
+    {
+        $cache = $this->cachePath($licenseKey);
+        if (is_file($cache)) @unlink($cache);
+        try {
+            $this->request('POST', 'api/v1/portal/' . rawurlencode($tenantSlug) . '/deactivate',
+                json_encode(['licenseKey' => $licenseKey, 'activationId' => $activationId], JSON_THROW_ON_ERROR), 204);
+            return true;
+        } catch (\Throwable) { return false; }
     }
 
-    /**
-     * Keeps a floating session alive. Call every 4–5 minutes.
-     *
-     * [S-Float] Session token in the POST body — never the URL path — matches
-     * FloatingController.Heartbeat's FloatingTokenRequest exactly.
-     */
+    public function checkout(string $licenseKey, ?string $deviceId = null, ?string $deviceName = null): FloatingSession
+    {
+        $payload = ['licenseKey' => $licenseKey, 'deviceId' => ($deviceId === null || $deviceId === '') ? $this->getHardwareId() : $deviceId];
+        if ($deviceName !== null && $deviceName !== '') $payload['deviceName'] = $deviceName;
+        return $this->floatingRequest('checkout', $payload);
+    }
+
     public function heartbeat(string $sessionToken): FloatingSession
     {
-        $data = $this->post('api/v1/float/heartbeat', ['sessionToken' => $sessionToken]);
-        return FloatingSession::fromArray($data);
+        return $this->floatingRequest('heartbeat', ['sessionToken' => $sessionToken]);
     }
 
-    /**
-     * Releases a floating seat back to the pool.
-     *
-     * [S-Float] Session token in the POST body — never the URL path — matches
-     * FloatingController.Checkin's FloatingTokenRequest exactly (also: it's a POST, not DELETE).
-     */
-    public function checkin(string $sessionToken): void
+    public function tryCheckin(string $sessionToken): bool
     {
-        $this->post('api/v1/float/checkin', ['sessionToken' => $sessionToken]);
+        try {
+            $this->request('POST', 'api/v1/float/checkin', json_encode(['sessionToken' => $sessionToken], JSON_THROW_ON_ERROR), 204);
+            return true;
+        } catch (\Throwable) { return false; }
+    }
+
+    public function checkin(string $sessionToken): void { $this->tryCheckin($sessionToken); }
+
+    private function floatingRequest(string $operation, array $payload): FloatingSession
+    {
+        $failure = fn() => new FloatingSession(errorCode: 'RequestFailed', message: 'Cannot complete floating request.');
+        try {
+            $data = $this->post('api/v1/float/' . $operation, $payload);
+            if (!array_key_exists('success', $data) || !is_bool($data['success'])) return $failure();
+            foreach (['sessionToken', 'expiresAt', 'message', 'errorCode'] as $field)
+                if (isset($data[$field]) && !is_string($data[$field])) return $failure();
+            if (!$data['success']) return new FloatingSession(message: $data['message'] ?? null, errorCode: ($data['errorCode'] ?? '') ?: 'FloatingDenied');
+            if (trim($data['sessionToken'] ?? '') === '' || trim($data['expiresAt'] ?? '') === '') return $failure();
+            $result = FloatingSession::fromArray($data); $result->errorCode = null; return $result;
+        } catch (\Throwable) { return $failure(); }
     }
 
     // ── Offline token verification (pc_offline_v1, ECDSA P-256 / IEEE P1363) ──────────────
@@ -241,84 +286,51 @@ class PermitCoreClient
                 return ['isValid' => false, 'message' => 'Malformed payload.'];
             }
 
-            $expiresAt = new \DateTime((string) ($payload['expiresAt'] ?? ''), new \DateTimeZone('UTC'));
-            $now       = new \DateTime('now', new \DateTimeZone('UTC'));
-            if ($expiresAt < $now) {
-                return array_merge(['isValid' => false, 'message' => 'Token expired.'], $payload);
+            if (($payload['version'] ?? null) !== 1 || !$this->validFutureDate($payload['expiresAt'] ?? null)) {
+                return ['isValid' => false, 'message' => 'Token expired or malformed.'];
             }
-
-            return array_merge(['isValid' => true, 'message' => 'Valid.'], $payload);
+            return array_merge($payload, ['isValid' => true, 'message' => 'Valid.']);
         } catch (\Throwable) {
             return ['isValid' => false, 'message' => 'Invalid or corrupt token.'];
         }
     }
 
-    /**
-     * Verifies an offline token, additionally checks it was issued for this device, and — on
-     * success — persists the payload to local disk so a later run can call validateOffline()
-     * without needing the original token again.
-     */
-    public function activateOffline(string $token, string $publicKeyBase64, string $deviceId): array
+    /** Verify configured trust and persist only the original signed token. */
+    public function activateOffline(string $token, ?string $deviceId = null, ?string $expectedProductId = null): array
     {
-        $result = $this->verifyOfflineToken($token, $publicKeyBase64);
-        if (!($result['isValid'] ?? false)) {
-            return $result;
+        $id = $this->effectiveDeviceId($deviceId);
+        $result = $this->trustedOfflineToken($token, $id, $expectedProductId);
+        if ($result['isValid'] && $this->enableOfflineCache) {
+            try {
+                if (!is_dir($this->cacheDirectory)) mkdir($this->cacheDirectory, 0700, true);
+                file_put_contents($this->offlineCachePath($id), json_encode(['token' => $token], JSON_THROW_ON_ERROR), LOCK_EX);
+            } catch (\Throwable) { /* Disk failure does not invalidate a verified token. */ }
         }
-
-        if (strcasecmp((string) ($result['deviceId'] ?? ''), $deviceId) !== 0) {
-            return array_merge($result, [
-                'isValid' => false,
-                'message' => 'Token was issued for a different device.',
-            ]);
-        }
-
-        try {
-            $payload = $result;
-            unset($payload['isValid'], $payload['message']);
-            file_put_contents(
-                $this->offlineCachePath($deviceId),
-                json_encode($payload, JSON_THROW_ON_ERROR),
-                LOCK_EX
-            );
-        } catch (\Throwable) {
-            // best-effort — cache failure must never block a successful verification
-        }
-
         return $result;
     }
 
-    /**
-     * Reads the locally persisted offline-activation result (from a prior activateOffline()
-     * call) and checks it's still within its validity window. No network call, no token
-     * needed — call this on every app launch once already offline-activated.
-     */
-    public function validateOffline(string $deviceId): array
+    /** Re-verify the original signed token and context on every read. */
+    public function validateOffline(?string $deviceId = null, ?string $expectedProductId = null): array
     {
-        $path = $this->offlineCachePath($deviceId);
-        if (!file_exists($path)) {
-            return ['isValid' => false, 'message' => 'No local offline activation found.'];
-        }
-
+        if (!$this->enableOfflineCache) return ['isValid' => false, 'message' => 'Offline caching is disabled.'];
         try {
-            $payload = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($payload)) {
-                return ['isValid' => false, 'message' => 'Corrupt local offline activation.'];
-            }
+            $id = $this->effectiveDeviceId($deviceId);
+            $file = $this->offlineCachePath($id);
+            if (!is_file($file)) return ['isValid' => false, 'message' => 'No signed token found.'];
+            $entry = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+            return $this->trustedOfflineToken($entry['token'], $id, $expectedProductId);
+        } catch (\Throwable) { return ['isValid' => false, 'message' => 'No trusted offline activation found.']; }
+    }
 
-            if (strcasecmp((string) ($payload['deviceId'] ?? ''), $deviceId) !== 0) {
-                return array_merge(['isValid' => false, 'message' => 'Device mismatch.'], $payload);
-            }
-
-            $expiresAt = new \DateTime((string) ($payload['expiresAt'] ?? ''), new \DateTimeZone('UTC'));
-            $now       = new \DateTime('now', new \DateTimeZone('UTC'));
-            if ($expiresAt < $now) {
-                return array_merge(['isValid' => false, 'message' => 'Offline activation expired.'], $payload);
-            }
-
-            return array_merge(['isValid' => true, 'message' => 'Valid (offline).'], $payload);
-        } catch (\Throwable) {
-            return ['isValid' => false, 'message' => 'Corrupt local offline activation.'];
+    private function trustedOfflineToken(string $token, string $deviceId, ?string $productId): array
+    {
+        foreach ($this->trustedPublicKeys as $pin) {
+            $result = $this->verifyOfflineToken($token, $pin);
+            if (($result['isValid'] ?? false) === true && is_string($result['deviceId'] ?? null) &&
+                strtolower(trim($result['deviceId'])) === $deviceId &&
+                (!$productId || (is_string($result['productId'] ?? null) && strcasecmp($result['productId'], $productId) === 0))) return $result;
         }
+        return ['isValid' => false, 'message' => 'Offline token trust or context check failed.'];
     }
 
     /**
@@ -340,8 +352,7 @@ class PermitCoreClient
 
     private function offlineCachePath(string $deviceId): string
     {
-        $hash = substr(hash('sha256', $deviceId), 0, 16);
-        return sys_get_temp_dir() . DIRECTORY_SEPARATOR . ".permitcore_offline_{$hash}";
+        return $this->cacheDirectory . DIRECTORY_SEPARATOR . '.permitcore_offline_v2_' . hash('sha256', $deviceId);
     }
 
     /** Wraps a base64-encoded SPKI (SubjectPublicKeyInfo) DER key into PEM for openssl_verify(). */
@@ -437,98 +448,64 @@ class PermitCoreClient
     // verifying it locally (no network) on every offline read. A hand-edited cache file now
     // fails ECDSA verification instead of silently working.
 
-    private function saveCache(string $licenseKey, LicenseResult $result): void
+    private function effectiveDeviceId(?string $id = null): string
     {
-        // The server only issues offlineCacheToken when a grace period is configured, so a
-        // null/missing token here already means "nothing to cache," same as the old
-        // offlineGraceDays check used to mean.
-        if (!$this->enableOfflineCache || empty($result->offlineCacheToken)) {
-            return;
-        }
-        try {
-            // Safe to read before verifying — only used to pick which tenant's public-key
-            // endpoint to fetch. The verifyGraceCacheToken() call below is what actually
-            // establishes trust before anything gets persisted to disk.
-            $tenantSlug = $this->extractUnverifiedTenantSlug($result->offlineCacheToken);
-            if ($tenantSlug === null) {
-                return;
-            }
-
-            $pubKeyData = $this->get('api/v1/' . rawurlencode($tenantSlug) . '/public-key');
-            $publicKey  = $pubKeyData['publicKey'] ?? null;
-            if (!is_string($publicKey) || $publicKey === '') {
-                return;
-            }
-
-            // Verify before persisting anything — never cache a token this SDK can't itself
-            // verify later; that would just recreate the old "trust an opaque file" problem.
-            $check = $this->verifyGraceCacheToken($result->offlineCacheToken, $publicKey);
-            if (!($check['isValid'] ?? false)) {
-                return;
-            }
-
-            $entry = ['token' => $result->offlineCacheToken, 'publicKey' => $publicKey];
-            file_put_contents(
-                $this->cachePath($licenseKey),
-                json_encode($entry, JSON_THROW_ON_ERROR),
-                LOCK_EX
-            );
-        } catch (\Throwable) {
-            // cache failure must never block the normal online flow
-        }
+        return strtolower(trim($id ?? '') ?: (trim($this->deviceId ?? '') ?: $this->getHardwareId()));
     }
 
-    private function loadCache(string $licenseKey): ?LicenseResult
+    private function trustedGraceToken(string $token, string $key, string $deviceId, ?string $productId, bool $activation): ?array
     {
-        if (!$this->enableOfflineCache) {
-            return null;
+        foreach ($this->trustedPublicKeys as $pin) {
+            $check = $this->verifyGraceCacheToken($token, $pin);
+            $p = $check['payload'] ?? null;
+            if (($check['isValid'] ?? false) !== true || !is_array($p) || ($p['isValid'] ?? false) !== true ||
+                ($p['licenseKeySha256'] ?? null) !== hash('sha256', $key) ||
+                !is_string($p['productId'] ?? null) || $p['productId'] === '' ||
+                ($productId && strcasecmp($p['productId'], $productId) !== 0) ||
+                (isset($p['deviceId']) && (!is_string($p['deviceId']) || strtolower(trim($p['deviceId'])) !== $deviceId)) ||
+                (($activation || ($p['nodeLocked'] ?? null) !== false) && (($p['deviceActivated'] ?? null) !== true || empty($p['deviceId'])))) continue;
+            return $p;
         }
-        $path = $this->cachePath($licenseKey);
-        if (!file_exists($path)) {
-            return null;
-        }
-        try {
-            $entry = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($entry) || !isset($entry['token'], $entry['publicKey'])) {
-                return null;
-            }
-
-            // No network call here — verification uses only the public key persisted alongside
-            // the token at save time. This is the entire point: a hand-edited cache file (or one
-            // copied to another machine) fails ECDSA verification instead of silently working.
-            $check = $this->verifyGraceCacheToken((string) $entry['token'], (string) $entry['publicKey']);
-            if (!($check['isValid'] ?? false) || !isset($check['payload']) || !is_array($check['payload'])) {
-                return null;
-            }
-
-            $p = $check['payload'];
-
-            $validUntilDisplay = (string) ($p['validUntil'] ?? '');
-            try {
-                $dt = new \DateTime($validUntilDisplay, new \DateTimeZone('UTC'));
-                $validUntilDisplay = $dt->format('d M Y');
-            } catch (\Throwable) {
-                // fall back to the raw ISO string if unparsable — display only, never fatal
-            }
-
-            return new LicenseResult(
-                isValid:              (bool)  ($p['isValid'] ?? false),
-                productName:                   $p['productName'] ?? null,
-                remainingActivations: isset($p['remainingActivations']) ? (int) $p['remainingActivations'] : null,
-                expiresAt:                     $p['expiresAt'] ?? null,
-                message:              "Offline mode — valid until {$validUntilDisplay} (cryptographically verified)",
-                features:                      $p['features'] ?? null,
-                isOffline:            true,
-            );
-        } catch (\Throwable) {
-            return null;
-        }
+        return null;
     }
 
-    private function cachePath(string $licenseKey): string
+    private function saveCache(string $key, LicenseResult $result, string $deviceId, ?string $productId, bool $activation = false): void
     {
-        $hash = substr(hash('sha256', $licenseKey), 0, 16);
-        return sys_get_temp_dir() . DIRECTORY_SEPARATOR . ".permitcore_cache_{$hash}";
+        if (!$this->enableOfflineCache || !$result->offlineCacheToken) return;
+        try {
+            if (!$this->trustedGraceToken($result->offlineCacheToken, $key, $deviceId, $productId, $activation)) return;
+            if (!is_dir($this->cacheDirectory)) mkdir($this->cacheDirectory, 0700, true);
+            file_put_contents($this->cachePath($key), json_encode(['token' => $result->offlineCacheToken], JSON_THROW_ON_ERROR), LOCK_EX);
+        } catch (\Throwable) { /* Cache failure never blocks an online result. */ }
+    }
+
+    private function loadCache(string $key, string $deviceId, ?string $productId, bool $activation = false): ?LicenseResult
+    {
+        if (!$this->enableOfflineCache) return null;
+        try {
+            $file = $this->cachePath($key);
+            if (!is_file($file)) return null;
+            $entry = json_decode((string)file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+            $p = $this->trustedGraceToken($entry['token'], $key, $deviceId, $productId, $activation);
+            if (!$p) return null;
+            return new LicenseResult(isValid: true, productId: $p['productId'], nodeLocked: ($p['nodeLocked'] ?? false) === true,
+                productName: $p['productName'] ?? null, remainingActivations: $p['remainingActivations'] ?? null,
+                expiresAt: $p['expiresAt'] ?? null, features: $p['features'] ?? null, isOffline: true,
+                message: 'Offline mode — valid until ' . $p['validUntil'] . ' (cryptographically verified)');
+        } catch (\Throwable) { return null; }
+    }
+
+    private function cachePath(string $key): string
+    {
+        return $this->cacheDirectory . DIRECTORY_SEPARATOR . '.permitcore_cache_v2_' . hash('sha256', $key);
+    }
+
+    private function validFutureDate($value): bool
+    {
+        if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/D', $value)) return false;
+        $date = new \DateTimeImmutable($value);
+        $errors = \DateTimeImmutable::getLastErrors();
+        return ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0)) && $date > new \DateTimeImmutable('now');
     }
 
     // ── Grace-cache token verification (pc_grace_v1, ECDSA P-256 / IEEE P1363) ──────────
@@ -580,40 +557,12 @@ class PermitCoreClient
                 return ['isValid' => false, 'message' => 'Malformed payload.'];
             }
 
-            $validUntil = new \DateTime((string) ($payload['validUntil'] ?? ''), new \DateTimeZone('UTC'));
-            $now        = new \DateTime('now', new \DateTimeZone('UTC'));
-            if ($validUntil < $now) {
-                return ['isValid' => false, 'message' => 'Grace period expired.', 'payload' => $payload];
+            if (($payload['version'] ?? null) !== 1 || !$this->validFutureDate($payload['validUntil'] ?? null)) {
+                return ['isValid' => false, 'message' => 'Grace period expired or malformed.'];
             }
-
             return ['isValid' => true, 'message' => 'Valid.', 'payload' => $payload];
         } catch (\Throwable) {
             return ['isValid' => false, 'message' => 'Invalid or corrupt token.'];
-        }
-    }
-
-    // Reads only the `tenantSlug` field out of the token's payload, WITHOUT verifying the
-    // signature — safe to do because it's only used to pick which tenant's public-key endpoint
-    // to fetch. The subsequent verifyGraceCacheToken() call is what actually establishes trust
-    // before anything gets persisted to disk.
-    private function extractUnverifiedTenantSlug(string $token): ?string
-    {
-        $parts = explode('.', $token);
-        if (count($parts) !== 3 || $parts[0] !== 'pc_grace_v1') {
-            return null;
-        }
-        try {
-            $json = $this->base64UrlDecode($parts[1]);
-            if ($json === false) {
-                return null;
-            }
-            $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($payload) || !isset($payload['tenantSlug']) || !is_string($payload['tenantSlug'])) {
-                return null;
-            }
-            return $payload['tenantSlug'];
-        } catch (\Throwable) {
-            return null;
         }
     }
 
@@ -638,54 +587,72 @@ class PermitCoreClient
         return $this->request('POST', $path, json_encode($payload, JSON_THROW_ON_ERROR));
     }
 
-    private function request(string $method, string $path, ?string $body): array
+    private static function rejectedLicense(HttpRejection $error): LicenseResult
     {
-        $ch = curl_init("{$this->baseUrl}/{$path}");
-        if ($ch === false) {
-            throw new \RuntimeException('curl_init failed');
-        }
-
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => $this->timeout,
-            CURLOPT_USERAGENT      => 'PermitCore-PHP/1.0',
-            CURLOPT_CUSTOMREQUEST  => $method,
-        ]);
-
-        if ($body !== null) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'Accept: application/json',
-            ]);
-        } else {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
-        }
-
-        $raw    = curl_exec($ch);
-        $errno  = curl_errno($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        // [QA-019] curl_close() is a deprecated no-op as of PHP 8.5 — curl handles have been
-        // reference-counted CurlHandle objects (not resources needing manual closing) since PHP
-        // 8.0, and calling this here emitted a real deprecation notice on PHP 8.5 that corrupted
-        // every response: the notice's own output ran before this method's caller could send
-        // headers, producing "headers already sent" warnings and turning a clean 403/CSV response
-        // into HTML-prefixed garbage. $ch is released automatically when it goes out of scope.
-
-        if ($errno !== CURLE_OK || $raw === false) {
-            throw new \RuntimeException("cURL error {$errno}");
-        }
-
-        if ($status >= 400) {
-            throw new \RuntimeException("HTTP {$status}: {$raw}");
-        }
-
-        if ($raw === '' || $raw === 'null') {
-            return [];
-        }
-
-        return json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $data = json_decode($error->body, true);
+            $result = LicenseResult::fromArray(is_array($data) ? $data : []);
+        } catch (\Throwable) { $result = new LicenseResult(); }
+        $result->isValid = false;
+        $result->isOffline = false;
+        $result->offlineCacheToken = null;
+        if (empty($result->errorCode)) $result->errorCode = 'HttpError';
+        if (empty($result->message)) $result->message = $error->getMessage();
+        return $result;
     }
+
+    private static function licenseResponse(array $data): LicenseResult
+    {
+        if (!array_key_exists('isValid', $data) || !is_bool($data['isValid']) ||
+            (isset($data['errorCode']) && !is_string($data['errorCode']))) throw new InvalidResponse();
+        try { $result = LicenseResult::fromArray($data); }
+        catch (\Throwable $error) { throw new InvalidResponse('Invalid license response.', 0, $error); }
+        $result->isOffline = false;
+        if (!$result->isValid) $result->offlineCacheToken = null;
+        return $result;
+    }
+
+    private function request(string $method, string $path, ?string $body, ?int $expectedStatus = null): array
+    {
+        $safe = ($method === 'GET' && ($path === 'api/v1/nonce' || preg_match('~^api/v1/[^/]+/public-key$~', $path))) ||
+            ($method === 'POST' && in_array($path, ['api/v1/validate', 'api/v1/float/heartbeat'], true));
+        for ($attempt = 0; ; $attempt++) {
+            $ch = curl_init("{$this->baseUrl}/{$path}");
+            if ($ch === false) throw new \RuntimeException('curl_init failed');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => $this->timeout,
+                CURLOPT_CONNECTTIMEOUT => $this->timeout,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_USERAGENT => 'PermitCore-PHP/' . self::VERSION,
+                CURLOPT_CUSTOMREQUEST => $method,
+                CURLOPT_HTTPHEADER => ['Accept: application/json', 'Content-Type: application/json'],
+            ]);
+            if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            $raw = curl_exec($ch);
+            $errno = curl_errno($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            // CurlHandle is released automatically; curl_close is deprecated in PHP 8.5.
+            if ($status >= 300 && $status < 500) throw new HttpRejection($status, $raw === false ? '' : (string) $raw);
+            if ($status >= 200 && $status < 300 && ($errno !== CURLE_OK || $raw === false)) throw new InvalidResponse();
+            if ($status >= 500 || $errno !== CURLE_OK || $raw === false) {
+                if ($safe && $attempt < $this->maxRetries) {
+                    unset($ch);
+                    usleep(min(2000000, 250000 * (2 ** $attempt)));
+                    continue;
+                }
+                throw new \RuntimeException("Request failed (HTTP {$status}, cURL {$errno}).");
+            }
+            if ($expectedStatus !== null && $status !== $expectedStatus) throw new \RuntimeException('Unexpected response status.');
+            if ($status === 204 && $raw === '') return [];
+            try {
+                $data = json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+                if (!is_array($data)) throw new InvalidResponse();
+                return $data;
+            } catch (\JsonException $error) { throw new InvalidResponse('Malformed JSON.', 0, $error); }
+        }
+    }
+
 }
 
 
@@ -805,6 +772,7 @@ class FloatingSession
         public ?string $sessionToken = null,
         public ?string $expiresAt    = null,
         public ?string $message      = null,
+        public ?string $errorCode    = null,
     ) {}
 
     public static function fromArray(array $data): self
@@ -814,6 +782,7 @@ class FloatingSession
             sessionToken:          $data['sessionToken']  ?? null,
             expiresAt:             $data['expiresAt']     ?? null,
             message:               $data['message']       ?? null,
+            errorCode:             $data['errorCode']     ?? null,
         );
     }
 }

@@ -1,0 +1,158 @@
+{
+  "vectorSuiteVersion": 1,
+  "schemaNote": "Shared cross-SDK protocol test vectors (CTO review F-27). Signature scheme: ECDSA P-256, SHA-256, raw IEEE P1363 (64-byte r||s, NOT ASN.1 DER) \u2014 SDKs whose crypto library requires DER (OpenSSL, PHP openssl_verify, Python \u0060cryptography\u0060) must convert P1363-\u003EDER before verifying. Signature covers the UTF-8 bytes of the base64url-encoded PAYLOAD STRING, not the decoded JSON bytes. Token format: \u003Cprefix\u003E.\u003Cbase64url(payload_json)\u003E.\u003Cbase64url(signature)\u003E.",
+  "generatedBy": "SDKs/test-vectors/generator (dotnet run)",
+  "signingKeyPair": {
+    "note": "TEST KEY ONLY \u2014 never used in production. Verify offline/grace vectors against this public key.",
+    "algorithm": "ECDSA-P256-SHA256",
+    "publicKeyBase64Spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvSBIlwqVIpwIwzqeqt761d/Y6\u002BSJotWPo7KuZgaV4v\u002B4nsDolBfbow9RUaqLmtXrExd8jk5FTZDBXmhphjlTOg=="
+  },
+  "wrongKeyPairPublicKeyForReference": {
+    "note": "The OTHER keypair used to produce badSignature* vectors \u2014 included only for reference, vectors never need SDKs to verify against this one.",
+    "publicKeyBase64Spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEv13Vuvxmla5AueJKyRrjIOfXQM/3QsRQmi4XVRdL5tIeffmAr31DFnXV8vZFPJS7vrnl8TaMQ8QTz6VyJNbmBA=="
+  },
+  "offlineTokenVectors": [
+    {
+      "name": "valid_basic",
+      "description": "Well-formed token, valid signature, not expired, explicit kid.",
+      "token": "pc_offline_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsImtpZCI6ImtleS0wMDEiLCJ0ZW5hbnRJZCI6IjIyMjIyMjIyLTIyMjItMjIyMi0yMjIyLTIyMjIyMjIyMjIyMiIsImxpY2Vuc2VJZCI6IjMzMzMzMzMzLTMzMzMtMzMzMy0zMzMzLTMzMzMzMzMzMzMzMyIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwicHJvZHVjdElkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTQ0NDQtNDQ0NDQ0NDQ0NDQ0IiwiZGV2aWNlSWQiOiJ0ZXN0LWRldmljZS0wMDEiLCJkZXZpY2VOYW1lIjoiVGVzdCBXb3Jrc3RhdGlvbiIsInByb2R1Y3ROYW1lIjoiVGVzdCBQcm9kdWN0IiwibWF4QWN0aXZhdGlvbnMiOjUsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoiLCJleHBpcmVzQXQiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9.se-_TZyixceupxisopy-DEF3qxEB9UOKEMClMNNss9A6pZBpvxUSLZDdP1awte5i1Zu9AZhMQOFBXeirN2nUcw",
+      "expectValid": true,
+      "expectedPayload": {
+        "version": 1,
+        "tokenId": "11111111-1111-1111-1111-111111111111",
+        "tenantSlug": "acme-test",
+        "kid": "key-001",
+        "tenantId": "22222222-2222-2222-2222-222222222222",
+        "licenseId": "33333333-3333-3333-3333-333333333333",
+        "licenseKeyHash": "h:test-only-opaque-server-hmac",
+        "productId": "44444444-4444-4444-4444-444444444444",
+        "deviceId": "test-device-001",
+        "deviceName": "Test Workstation",
+        "productName": "Test Product",
+        "maxActivations": 5,
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "expired",
+      "description": "Valid signature, but expiresAt is in the past \u2014 must be rejected.",
+      "token": "pc_offline_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsImtpZCI6ImtleS0wMDEiLCJ0ZW5hbnRJZCI6IjIyMjIyMjIyLTIyMjItMjIyMi0yMjIyLTIyMjIyMjIyMjIyMiIsImxpY2Vuc2VJZCI6IjMzMzMzMzMzLTMzMzMtMzMzMy0zMzMzLTMzMzMzMzMzMzMzMyIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwicHJvZHVjdElkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTQ0NDQtNDQ0NDQ0NDQ0NDQ0IiwiZGV2aWNlSWQiOiJ0ZXN0LWRldmljZS0wMDEiLCJkZXZpY2VOYW1lIjoiVGVzdCBXb3Jrc3RhdGlvbiIsInByb2R1Y3ROYW1lIjoiVGVzdCBQcm9kdWN0IiwibWF4QWN0aXZhdGlvbnMiOjUsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoiLCJleHBpcmVzQXQiOiIyMDIwLTAxLTAxVDAwOjAwOjAwWiJ9.Aazto7Md9y4oZUA9lE6d6fTT2uiDek2DbkG39mpkRkVAMEi-MPfM8pMamc-B3NT_EsEYnw43qH7NvqWcf1tPCg",
+      "expectValid": false
+    },
+    {
+      "name": "legacy_null_kid",
+      "description": "kid is null (token issued before key versioning existed) \u2014 must still verify against the tenant\u0027s key.",
+      "token": "pc_offline_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsInRlbmFudElkIjoiMjIyMjIyMjItMjIyMi0yMjIyLTIyMjItMjIyMjIyMjIyMjIyIiwibGljZW5zZUlkIjoiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwibGljZW5zZUtleUhhc2giOiJoOnRlc3Qtb25seS1vcGFxdWUtc2VydmVyLWhtYWMiLCJwcm9kdWN0SWQiOiI0NDQ0NDQ0NC00NDQ0LTQ0NDQtNDQ0NC00NDQ0NDQ0NDQ0NDQiLCJkZXZpY2VJZCI6InRlc3QtZGV2aWNlLTAwMSIsImRldmljZU5hbWUiOiJUZXN0IFdvcmtzdGF0aW9uIiwicHJvZHVjdE5hbWUiOiJUZXN0IFByb2R1Y3QiLCJtYXhBY3RpdmF0aW9ucyI6NSwiaXNzdWVkQXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwWiIsImV4cGlyZXNBdCI6IjIwOTktMDEtMDFUMDA6MDA6MDBaIn0.kubZfJCLwAvFgPE8cVig22dfUomzVq_Mhg8PtBqEj5K-szJLJuPhjGIT5y3sSmCyL6wBufgn_Xp73MSVuXFY9g",
+      "expectValid": true,
+      "expectedPayload": {
+        "version": 1,
+        "tokenId": "11111111-1111-1111-1111-111111111111",
+        "tenantSlug": "acme-test",
+        "kid": null,
+        "tenantId": "22222222-2222-2222-2222-222222222222",
+        "licenseId": "33333333-3333-3333-3333-333333333333",
+        "licenseKeyHash": "h:test-only-opaque-server-hmac",
+        "productId": "44444444-4444-4444-4444-444444444444",
+        "deviceId": "test-device-001",
+        "deviceName": "Test Workstation",
+        "productName": "Test Product",
+        "maxActivations": 5,
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "bad_signature",
+      "description": "Correct payload, but signed with a different (wrong) private key \u2014 verifying against signingKeyPair\u0027s public key must fail.",
+      "token": "pc_offline_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsImtpZCI6ImtleS0wMDEiLCJ0ZW5hbnRJZCI6IjIyMjIyMjIyLTIyMjItMjIyMi0yMjIyLTIyMjIyMjIyMjIyMiIsImxpY2Vuc2VJZCI6IjMzMzMzMzMzLTMzMzMtMzMzMy0zMzMzLTMzMzMzMzMzMzMzMyIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwicHJvZHVjdElkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTQ0NDQtNDQ0NDQ0NDQ0NDQ0IiwiZGV2aWNlSWQiOiJ0ZXN0LWRldmljZS0wMDEiLCJkZXZpY2VOYW1lIjoiVGVzdCBXb3Jrc3RhdGlvbiIsInByb2R1Y3ROYW1lIjoiVGVzdCBQcm9kdWN0IiwibWF4QWN0aXZhdGlvbnMiOjUsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoiLCJleHBpcmVzQXQiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9._ljPFpLY-smtfOAIsU-uInB5okznguMllYaoAg3yGIBYXDLg3a6vg-ymEEOi-AeRDftEoQgOY0sV2_J8gb_YXw",
+      "expectValid": false
+    },
+    {
+      "name": "tampered_payload",
+      "description": "Payload segment bytes altered after signing \u2014 signature no longer matches, must fail.",
+      "token": "pc_offline_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsImtpZCI6ImtleS0wMDEiLCJ0ZW5hbnRJZCI6IjIyMjIyMjIyLTIyMjItMjIyMi0yMjIyLTIyMjIyMjIyMjIyMiIsImxpY2Vuc2VJZCI6IjMzMzMzMzMzLTMzMzMtMzMzMy0zMzMzLTMzMzMzMzMzMzMzMyIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwicHJvZHVjdElkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTQ0NDQtNDQ0NDQ0NDQ0NDQ0IiwiZGV2aWNlSWQiOiJ0ZXN0LWRldmljZS0wMDEiLCJkZXZpY2VOYW1lIjoiVGVzdCBXb3Jrc3RhdGlvbiIsInByb2R1Y3ROYW1lIjoiVGVzdCBQcm9kdWN0IiwibWF4QWN0aXZhdGlvbnMiOjUsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoiLCJleHBpcmVzQXQiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJA.se-_TZyixceupxisopy-DEF3qxEB9UOKEMClMNNss9A6pZBpvxUSLZDdP1awte5i1Zu9AZhMQOFBXeirN2nUcw",
+      "expectValid": false
+    },
+    {
+      "name": "wrong_prefix",
+      "description": "Token prefix is not pc_offline_v1 \u2014 must be rejected as malformed before any crypto is attempted.",
+      "token": "pc_bogus_v1.eyJ2ZXJzaW9uIjoxLCJ0b2tlbklkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwidGVuYW50U2x1ZyI6ImFjbWUtdGVzdCIsImtpZCI6ImtleS0wMDEiLCJ0ZW5hbnRJZCI6IjIyMjIyMjIyLTIyMjItMjIyMi0yMjIyLTIyMjIyMjIyMjIyMiIsImxpY2Vuc2VJZCI6IjMzMzMzMzMzLTMzMzMtMzMzMy0zMzMzLTMzMzMzMzMzMzMzMyIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwicHJvZHVjdElkIjoiNDQ0NDQ0NDQtNDQ0NC00NDQ0LTQ0NDQtNDQ0NDQ0NDQ0NDQ0IiwiZGV2aWNlSWQiOiJ0ZXN0LWRldmljZS0wMDEiLCJkZXZpY2VOYW1lIjoiVGVzdCBXb3Jrc3RhdGlvbiIsInByb2R1Y3ROYW1lIjoiVGVzdCBQcm9kdWN0IiwibWF4QWN0aXZhdGlvbnMiOjUsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMFoiLCJleHBpcmVzQXQiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9.se-_TZyixceupxisopy-DEF3qxEB9UOKEMClMNNss9A6pZBpvxUSLZDdP1awte5i1Zu9AZhMQOFBXeirN2nUcw",
+      "expectValid": false
+    },
+    {
+      "name": "malformed_parts",
+      "description": "Token does not have exactly 3 dot-separated parts \u2014 must be rejected as malformed.",
+      "token": "pc_offline_v1.onlyonepart",
+      "expectValid": false
+    }
+  ],
+  "graceTokenVectors": [
+    {
+      "name": "valid_basic",
+      "description": "Well-formed grace-cache token, valid signature, not expired.",
+      "token": "pc_grace_v1.eyJ2ZXJzaW9uIjoxLCJ0ZW5hbnRTbHVnIjoiYWNtZS10ZXN0Iiwia2lkIjoia2V5LTAwMSIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwibGljZW5zZUtleVNoYTI1NiI6Ijg4MTQyMzRmMWU5NWU2NTYzM2E0YTllNTJlMjgwNjA4NjdjZTdkNmM3NjgwMjk4NzBlMTEyYzAxMGE1Y2I4NjUiLCJwcm9kdWN0SWQiOiI0NDQ0NDQ0NC00NDQ0LTQ0NDQtNDQ0NC00NDQ0NDQ0NDQ0NDQiLCJkZXZpY2VJZCI6InRlc3QtZGV2aWNlLTAwMSIsImRldmljZUFjdGl2YXRlZCI6dHJ1ZSwibm9kZUxvY2tlZCI6dHJ1ZSwiaXNWYWxpZCI6dHJ1ZSwicHJvZHVjdE5hbWUiOiJUZXN0IFByb2R1Y3QiLCJmZWF0dXJlcyI6WyJmZWF0dXJlLWEiLCJmZWF0dXJlLWIiXSwicmVtYWluaW5nQWN0aXZhdGlvbnMiOjMsImV4cGlyZXNBdCI6IjIwOTktMDEtMDFUMDA6MDA6MDBaIiwiaXNzdWVkQXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwWiIsInZhbGlkVW50aWwiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9.uDkgSJsRyCkFe3J6gTqOzGe5LC6qfVQSBrPocfBpochBz2ynOkbk_ImJnVn97hSskYXq4z7QYlp50V-Sx8hAfw",
+      "expectValid": true,
+      "expectedPayload": {
+        "version": 1,
+        "tenantSlug": "acme-test",
+        "kid": "key-001",
+        "licenseKeyHash": "h:test-only-opaque-server-hmac",
+        "licenseKeySha256": "8814234f1e95e65633a4a9e52e28060867ce7d6c768029870e112c010a5cb865",
+        "productId": "44444444-4444-4444-4444-444444444444",
+        "deviceId": "test-device-001",
+        "deviceActivated": true,
+        "nodeLocked": true,
+        "isValid": true,
+        "productName": "Test Product",
+        "features": [
+          "feature-a",
+          "feature-b"
+        ],
+        "remainingActivations": 3,
+        "expiresAt": "2099-01-01T00:00:00Z",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "validUntil": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "expired",
+      "description": "Valid signature, but validUntil is in the past \u2014 must be rejected.",
+      "token": "pc_grace_v1.eyJ2ZXJzaW9uIjoxLCJ0ZW5hbnRTbHVnIjoiYWNtZS10ZXN0Iiwia2lkIjoia2V5LTAwMSIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwibGljZW5zZUtleVNoYTI1NiI6Ijg4MTQyMzRmMWU5NWU2NTYzM2E0YTllNTJlMjgwNjA4NjdjZTdkNmM3NjgwMjk4NzBlMTEyYzAxMGE1Y2I4NjUiLCJwcm9kdWN0SWQiOiI0NDQ0NDQ0NC00NDQ0LTQ0NDQtNDQ0NC00NDQ0NDQ0NDQ0NDQiLCJkZXZpY2VJZCI6InRlc3QtZGV2aWNlLTAwMSIsImRldmljZUFjdGl2YXRlZCI6dHJ1ZSwibm9kZUxvY2tlZCI6dHJ1ZSwiaXNWYWxpZCI6dHJ1ZSwicHJvZHVjdE5hbWUiOiJUZXN0IFByb2R1Y3QiLCJmZWF0dXJlcyI6WyJmZWF0dXJlLWEiLCJmZWF0dXJlLWIiXSwicmVtYWluaW5nQWN0aXZhdGlvbnMiOjMsImV4cGlyZXNBdCI6IjIwOTktMDEtMDFUMDA6MDA6MDBaIiwiaXNzdWVkQXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwWiIsInZhbGlkVW50aWwiOiIyMDIwLTAxLTAxVDAwOjAwOjAwWiJ9.xeZmwhkICyC7qX-azHIG4-UdyGdGs27aSh1Z_SHpOqJcPj-gcihMH7kjojoIawhWHeyEOmwPZIvVQgkGVHK92g",
+      "expectValid": false
+    },
+    {
+      "name": "bad_signature",
+      "description": "Correct payload, signed with the wrong private key \u2014 must fail.",
+      "token": "pc_grace_v1.eyJ2ZXJzaW9uIjoxLCJ0ZW5hbnRTbHVnIjoiYWNtZS10ZXN0Iiwia2lkIjoia2V5LTAwMSIsImxpY2Vuc2VLZXlIYXNoIjoiaDp0ZXN0LW9ubHktb3BhcXVlLXNlcnZlci1obWFjIiwibGljZW5zZUtleVNoYTI1NiI6Ijg4MTQyMzRmMWU5NWU2NTYzM2E0YTllNTJlMjgwNjA4NjdjZTdkNmM3NjgwMjk4NzBlMTEyYzAxMGE1Y2I4NjUiLCJwcm9kdWN0SWQiOiI0NDQ0NDQ0NC00NDQ0LTQ0NDQtNDQ0NC00NDQ0NDQ0NDQ0NDQiLCJkZXZpY2VJZCI6InRlc3QtZGV2aWNlLTAwMSIsImRldmljZUFjdGl2YXRlZCI6dHJ1ZSwibm9kZUxvY2tlZCI6dHJ1ZSwiaXNWYWxpZCI6dHJ1ZSwicHJvZHVjdE5hbWUiOiJUZXN0IFByb2R1Y3QiLCJmZWF0dXJlcyI6WyJmZWF0dXJlLWEiLCJmZWF0dXJlLWIiXSwicmVtYWluaW5nQWN0aXZhdGlvbnMiOjMsImV4cGlyZXNBdCI6IjIwOTktMDEtMDFUMDA6MDA6MDBaIiwiaXNzdWVkQXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwWiIsInZhbGlkVW50aWwiOiIyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9.xodmLyClbJ0auJlqgOVpCG8GvCoBpbb8IZy_RlWg5nKPrfNNBAYdivACiaLSuD7f7MMQgBUj3LJi0at5-Ves4Q",
+      "expectValid": false
+    }
+  ],
+  "requestShapes": {
+    "note": "Field-name/type contract for the wire requests every SDK builds. Not executable against a live server here \u2014 each SDK\u0027s test should serialize its own internal request object and assert the resulting JSON key set matches requiredKeys/optionalKeys exactly (catches silent field drift, e.g. a missing \u0060version\u0060 field).",
+    "validate": {
+      "method": "POST",
+      "path": "/api/v1/validate",
+      "requiredKeys": [
+        "licenseKey"
+      ],
+      "optionalKeys": [
+        "version"
+      ]
+    },
+    "activate": {
+      "method": "POST",
+      "path": "/api/v1/activate",
+      "requiredKeys": [
+        "licenseKey",
+        "deviceId",
+        "nonce"
+      ],
+      "optionalKeys": [
+        "deviceName",
+        "version"
+      ],
+      "note": "nonce must be freshly fetched from POST /api/v1/nonce immediately before activate \u2014 replay protection."
+    }
+  }
+}
